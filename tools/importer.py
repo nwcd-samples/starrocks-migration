@@ -78,8 +78,7 @@ def import_task(conn, db_name,table_name, file_path: str,aws_region:str,ak="",sk
                 WITH BROKER
                 PROPERTIES
                 (
-                    "timeout" = "3600",
-                    "aws.s3.region" = "{aws_region}"
+                    "timeout" = "3600"
                 );
                 """
     else:
@@ -95,8 +94,7 @@ def import_task(conn, db_name,table_name, file_path: str,aws_region:str,ak="",sk
                 (
                     "timeout" = "3600",
                     "aws.s3.access_key" = "{ak}",
-                    "aws.s3.secret_key" = "{sk}",
-                    "aws.s3.region" = "{aws_region}"
+                    "aws.s3.secret_key" = "{sk}"
         
                 );
                 """  
@@ -112,22 +110,21 @@ def import_task(conn, db_name,table_name, file_path: str,aws_region:str,ak="",sk
         SELECT STATE FROM information_schema.loads WHERE LABEL = '{label}';
         """
         while True:
-            # 先等10秒再说
-            status = ""
-            if status == 'FINISHED':
-                logger.info(f"success to import {file_path} to {table_name}")
-                break
-            elif status == 'CANCELLED':
-                logger.info(f"failed to import {file_path} to {table_name}")
-                break
-            else:
-                time.sleep(10)
-
+            time.sleep(2)
             with conn.cursor() as cursor:
                 cursor.execute(status_command)
                 conn.commit()
                 row = cursor.fetchone()
                 status = row['STATE'] 
+
+                if status == 'FINISHED':
+                    logger.info(f"success to import {file_path} to {table_name}")
+                    break
+                elif status == 'CANCELLED':
+                    logger.info(f"failed to import {file_path} to {table_name}")
+                    break
+                else:
+                    time.sleep(5)
 
             
 
