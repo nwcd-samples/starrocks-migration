@@ -199,7 +199,7 @@ def run(with_condition=False):
         begin_timestr = now.strftime("%Y-%m-%d %H:%M:%S")
         counter = 0
         conn = get_conn()
-        while counter < CONCURRENCY:
+        while counter < CONCURRENCY and len(task_deque) > 0:
             task = task_deque.popleft()
             pt_name = task["name"]
             counter += 1
