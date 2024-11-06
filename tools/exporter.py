@@ -148,6 +148,12 @@ def export_partition(conn, db_name, table_name, dest: str, pt_key: str, pt_name:
 def get_tasks():
     TABLE_NAME = os.getenv("TABLE_NAME")
     PT_KEY = os.getenv("PT_KEY")
+    TASK_FILTER = os.getenv("TASK_FILTER", "")
+    if TASK_FILTER:
+        parts = TASK_FILTER.split(",")
+        partitions = [{"name": pt_name} for pt_name in parts]
+        return partitions
+    
     conn = get_conn()
 
     cmd_partition = f"SHOW PARTITIONS FROM {TABLE_NAME}"
@@ -163,12 +169,10 @@ def get_tasks():
                     f'Partition {row["PartitionName"]}:{row["PartitionKey"]} not match partition key {PT_KEY}')
                 continue
 
-            begin, end = pick_key(row["Range"])
+            # begin, end = pick_key(row["Range"])
             partitions.append(
                 {
-                    "name": row["PartitionName"],
-                    "begin": begin,
-                    "end": end
+                    "name": row["PartitionName"]
                 }
             )
     conn.close()
@@ -191,6 +195,7 @@ def run(with_condition=False):
     # 向队列中添加任务
     partitions = get_tasks()
     task_deque = deque(partitions)
+    failed_list = list()
 
     logger.info("task begin")
     while len(task_deque) > 0:
@@ -213,6 +218,7 @@ def run(with_condition=False):
             for job in new_finished_jobs:
                 logger.info(f"success to finish job {job}")
             for job in new_failed_jobs:
+                failed_list.append(job)
                 logger.info(f"failed to finish job {job}")
             if running_jobs_count == 0:
                 running = False
