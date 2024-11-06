@@ -6,6 +6,7 @@ import threading
 import queue
 import boto3
 import os
+import uuid
 from .mysql import get_conn
 
 
@@ -38,6 +39,7 @@ class WorkerThread(threading.Thread):
 
     def run(self):
         conn = get_conn()
+        DB_NAME=os.getenv("DB_NAME")
         TABLE_NAME=os.getenv("TABLE_NAME")
         AK=os.getenv("AK")
         SK=os.getenv("SK")
@@ -48,7 +50,7 @@ class WorkerThread(threading.Thread):
            
                 sleep_time = random.uniform(0.01, 1.0)
                 time.sleep(sleep_time)
-                import_task(conn, TABLE_NAME, task, AWS_REGION,AK, SK)
+                import_task(conn, DB_NAME, TABLE_NAME, task, AWS_REGION,AK, SK)
                 self.task_queue.task_done()
             except queue.Empty:
                 # 如果队列为空，跳出循环
@@ -57,38 +59,78 @@ class WorkerThread(threading.Thread):
 
 
 
-def import_task(conn, table_name, file_path: str,aws_region:str,ak="",sk=""):
-   
-    if ak!="" and sk!="":
+def import_task(conn, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
+    # 生成一个UUID（版本4）
+    uuid_v4 = uuid.uuid4()
+
+    # 将UUID转换为字符串并去除连字符
+    uuid_str = uuid_v4.hex
+    label = f"{table_name}_{uuid_str}"
+
+    if ak=="" and sk=="":
         command = f"""
-            INSERT INTO {table_name}
-            SELECT * FROM FILES
-            (
-                "path" = "{file_path}",
-                "format" = "csv",
-                "aws.s3.region" = "{aws_region}",
-                "aws.s3.access_key" = "{ak}",
-                "aws.s3.secret_key" = "{sk}"
-            );
-            """
+                LOAD LABEL {db_name}.{label}
+                (
+                    DATA INFILE("{file_path}")
+                    INTO TABLE {table_name}
+                    COLUMNS TERMINATED BY "|"
+                )
+                WITH BROKER
+                PROPERTIES
+                (
+                    "timeout" = "3600",
+                    "aws.s3.region" = "{aws_region}"
+                );
+                """
     else:
         command = f"""
-            INSERT INTO {table_name}
-            SELECT * FROM FILES
-            (
-                "path" = "{file_path}",
-                "format" = "csv",
-                "aws.s3.region" = "{aws_region}"
-            );
-            """
+                LOAD LABEL {db_name}.{label}
+                (
+                    DATA INFILE("{file_path}")
+                    INTO TABLE {table_name}
+                    COLUMNS TERMINATED BY "|"
+                )
+                WITH BROKER
+                PROPERTIES
+                (
+                    "timeout" = "3600",
+                    "aws.s3.access_key" = "{ak}",
+                    "aws.s3.secret_key" = "{sk}",
+                    "aws.s3.region" = "{aws_region}"
+        
+                );
+                """  
 
-
-    logger.info(f"begin import {file_path} to {table_name}")
+    logger.info(f"begin import label:{label} {file_path} to {table_name}")
     try:
         with conn.cursor() as cursor:
             cursor.execute(command)
             conn.commit()
-            logger.info(f"success to import {file_path} to {table_name}")
+
+        # check status
+        status_command=f"""
+        SELECT STATE FROM information_schema.loads WHERE LABEL = '{label}';
+        """
+        while True:
+            # 先等10秒再说
+            status = ""
+            if status == 'FINISHED':
+                logger.info(f"success to import {file_path} to {table_name}")
+                break
+            elif status == 'CANCELLED':
+                logger.info(f"failed to import {file_path} to {table_name}")
+                break
+            else:
+                time.sleep(10)
+
+            with conn.cursor() as cursor:
+                cursor.execute(status_command)
+                conn.commit()
+                row = cursor.fetchone()
+                status = row['STATE'] 
+
+            
+
     except Exception as ex:
         logger.info(f"failed to import {file_path} to {table_name}")
         logger.error(ex)
@@ -115,12 +157,15 @@ def get_tasks():
     SOURCE=os.getenv("SOURCE")
     bucket_name, prefix = parse_s3_path(SOURCE)
 
+    # 
+    protocal = "s3"
     if AK !="" and SK !="":
         s3 = boto3.client('s3',
                     aws_access_key_id=AK,
                     aws_secret_access_key=SK,
                     region_name=AWS_REGION)
     else:
+        protocal = "s3a"
         s3 = boto3.client('s3',
                   region_name=AWS_REGION)
 
@@ -141,7 +186,7 @@ def get_tasks():
         # 提取对象键
         if 'Contents' in response:
             for obj in response['Contents']:
-                objects.append(f"s3://{bucket_name}/{obj['Key']}")
+                objects.append(f"{protocal}://{bucket_name}/{obj['Key']}")
 
         # 检查是否还有更多对象
         if response.get('IsTruncated', False):
