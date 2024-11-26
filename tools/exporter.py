@@ -89,10 +89,10 @@ def check_task(conn, db_name, start_time: str, query_info) -> dict:
         return running_jobs_count, new_finished_jobs, new_failed_jobs
 
 
-def export_partition(conn, db_name, table_name, dest: str, pt_key: str, pt_name: str, aws_region: str, ak: str,
+def export_partition(conn, db_name, table_name, dest: str, pt_name: str, aws_region: str, ak: str,
                      sk: str):
     dest.endswith("/")
-    path = dest + pt_name if dest.endswith("/") else f"{dest}/{pt_name}"
+    path = dest + f"{db_name}/{table_name}/{pt_name}" if dest.endswith("/") else f"{dest}/{db_name}/{table_name}/{pt_name}"
 
     if ak != "" and sk != "":
         command = f"""
@@ -145,18 +145,16 @@ def export_partition(conn, db_name, table_name, dest: str, pt_key: str, pt_name:
         logger.error(ex)
 
 
-def get_tasks():
-    TABLE_NAME = os.getenv("TABLE_NAME")
-    PT_KEY = os.getenv("PT_KEY")
-    TASK_FILTER = os.getenv("TASK_FILTER", "")
-    if TASK_FILTER:
-        parts = TASK_FILTER.split(",")
-        partitions = [{"name": pt_name} for pt_name in parts]
-        return partitions
+def get_tasks(table_name:str)->list:
+    # TASK_FILTER = os.getenv("TASK_FILTER", "")
+    # if TASK_FILTER:
+    #     parts = TASK_FILTER.split(",")
+    #     partitions = [{"name": pt_name} for pt_name in parts]
+    #     return partitions
     
     conn = get_conn()
 
-    cmd_partition = f"SHOW PARTITIONS FROM {TABLE_NAME}"
+    cmd_partition = f"SHOW PARTITIONS FROM {table_name}"
     partitions = list()
     with conn.cursor() as cursor:
         sql = str(cmd_partition)
@@ -164,11 +162,6 @@ def get_tasks():
         conn.commit()
         rows = cursor.fetchall()
         for row in rows:
-            if row['PartitionKey'] != PT_KEY:
-                logger.warning(
-                    f'Partition {row["PartitionName"]}:{row["PartitionKey"]} not match partition key {PT_KEY}')
-                continue
-
             # begin, end = pick_key(row["Range"])
             partitions.append(
                 {
@@ -179,16 +172,16 @@ def get_tasks():
     return partitions
 
 
-def run(with_condition=False):
+def run(table_name:str):
     DB_NAME = os.getenv("DB_NAME")
-    TABLE_NAME = os.getenv("TABLE_NAME")
-    DEST = os.getenv("DEST")
-    PT_KEY = os.getenv("PT_KEY")
+    STORAGES = os.getenv("STORAGES")
     AK = os.getenv("AK")
     SK = os.getenv("SK")
     AWS_REGION = os.getenv("AWS_REGION")
+
+    dest = STORAGES[0]
     if AK == "" or SK == "":
-        DEST = DEST.replace("s3:", "s3a:")
+        dest = dest.replace("s3:", "s3a:")
 
     CONCURRENCY = int(os.getenv("CONCURRENCY"))
 
@@ -208,9 +201,9 @@ def run(with_condition=False):
             task = task_deque.popleft()
             pt_name = task["name"]
             counter += 1
-            export_partition(conn, DB_NAME, TABLE_NAME, DEST, PT_KEY,
+            export_partition(conn, DB_NAME, table_name, dest,
                              pt_name, AWS_REGION, AK, SK)
-            time.sleep(0.2)
+            time.sleep(0.1)
 
         running = True
         while running:
@@ -226,4 +219,4 @@ def run(with_condition=False):
                 time.sleep(10)
         time.sleep(1)
 
-    logger.info(f"ALL TASK DONE !!! bingo!")
+    logger.info(f"ALL EXPORT TASK IN {table_name} DONE !!! bingo!")

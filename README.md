@@ -30,12 +30,12 @@ StarRocks 3.1.x 存算分离版本版本
 ### 前提条件
 1. 创建名为 starrocks-migration-task-trace-event 的Dyanmodb 做为迁移任务状态的记录表
 2. 创建一个普通的SQS队列，用于任务队列
-3. 编辑 lambda_for_new_file_event.py 中的配置部分
+3. 编辑 file_event.py 中的配置部分
 4. 根据 配置文件说明，编辑.env文件，配置好源集群，目标集群，备份对象存储信息
 
 ### 存量迁移
 1. 使用 DTH 同步源端和目标端对象存储
-2. 在目标端的aws 环境 创建lambda函数,lambda函数的代码参考文件 lambda_for_new_file_event.py
+2. 在目标端的aws 环境 创建lambda函数,lambda函数的代码参考文件 file_event.py
 3. 配置该lambda函数做为目标端对象存储s3 的event triger
 4. 启动 Task Manager
 ```
@@ -82,12 +82,15 @@ TARGET_DB_NAME=sungorwpro
 TABLE_NAMES=data_point_val,data_point_user
 TASK_FILTER=pt2021111
 ```
-### 部署环境
-#### 部署 Task Manager
-1. Task Manager 建议部署在AWS EC2中，也可以部署在其他云的云主机中
-2. 
-#### 部署 File Event Trigger
-1. 创建 Lambda函数，代码文件为 file_event_listener.py
+## 部署说明
+### 手动部署
+*Task Manager 建议部署在AWS EC2中，也可以部署在其他云的云主机中*
+1. git clone 本项目代码在AWS EC2中
+2. 配置EC2的绑定的角色，角色权限需要具有读写DynamoDB和SQS的权限
+3. 创建 Lambda函数，代码文件为 file_event.py
+
+### CloudFormation
+开发中...
 
 ## 其他功能
 ### 导出备份
