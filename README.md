@@ -1,11 +1,13 @@
 # StarRocks-Migration-Tool
-## 针对版本
-StarRocks 1.2+版本
-其他版本，请参考其他branch
+
 ## 工具说明
 StarRocks-Migration-Tool主要的使用场景是从其他云将 StarRocks 存算分离集群的数据迁移到Amazon Cloud的 StarRocks 集群
 
 *源集群如果是 StarRocks 非存算分离版本，请直接使用官方提供的迁移工具*
+
+## 针对版本
+StarRocks 3.1.x 存算分离版本版本
+3.2.4以后的存算分离版本版本，请参考其他branch
 
 ## 架构
 ![架构图](./assets/starrocks_migration_tool.png)
@@ -25,7 +27,27 @@ StarRocks-Migration-Tool主要的使用场景是从其他云将 StarRocks 存算
 5. Task Manager 监听 StarRocks 导入任务状态，并记录到Task Recorder
 
 ## 操作手册
-### 配置环境变量文件
+### 前提条件
+1. 创建名为 starrocks-migration-task-trace-event 的Dyanmodb 做为迁移任务状态的记录表
+2. 创建一个普通的SQS队列，用于任务队列
+3. 编辑 lambda_for_new_file_event.py 中的配置部分
+4. 根据 配置文件说明，编辑.env文件，配置好源集群，目标集群，备份对象存储信息
+
+### 存量迁移
+1. 使用 DTH 同步源端和目标端对象存储
+2. 在目标端的aws 环境 创建lambda函数,lambda函数的代码参考文件 lambda_for_new_file_event.py
+3. 配置该lambda函数做为目标端对象存储s3 的event triger
+4. 启动 Task Manager
+```
+python3 app.py sync --env .env
+```
+
+### 增量迁移
+1. 对需要迁移的表，都创建一张增量表，并且在业务的进行双写，即在启动Task Manager 之前，将后续数据双写入增量表中
+2. 按存量迁移过程进行存量数据迁移
+3. 存量数据迁移后，对创建的增量表进行迁移
+
+## 配置文件说明
 配置文件为.env文件
 ```
 # 并发导出的初始并发度,【后续会根据源集群的内存，cpu, io latency 等指标，进行动态控制】
@@ -57,7 +79,8 @@ TARGET_PWD=demo1234
 TARGET_DB_NAME=sungorwpro
 
 # 要导出的表集合,多个表用逗号隔开
-TABLE_NAMES=data_point_val,data_point_user,
+TABLE_NAMES=data_point_val,data_point_user
+TASK_FILTER=pt2021111
 ```
 ### 部署环境
 #### 部署 Task Manager
@@ -72,11 +95,7 @@ python3 app.py export --env .env_ex_au
 ### 手动导入
 python3 app.py export --env .env_im_au
 
-### 同步 从集群A 到集群B
-开发中...
-python3 app.py sync --env .env
 
-
-## Tip
-###  for starrocks 3.1
-导出只支持export ，并且只支持csv格式
+## 其他补充
+1. 使用导出导入方式进行数据迁移的原因
+StarRocks 3.1.x存算分离版本导出仅支持export导出，并且只支持csv格式

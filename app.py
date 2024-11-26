@@ -1,6 +1,6 @@
 
 from tools import conf
-from tools import exporter, importer
+from tools import exporter, importer, sync
 import argparse
 
 
@@ -28,7 +28,7 @@ def main():
     elif args.command == "sync":
         env_path = args.env
         conf.load_env(env_path)
-        exporter.run(with_condition=True)
+        sync.run()
     elif args.command == "import":
         env_path = args.env
         conf.load_env(env_path)
