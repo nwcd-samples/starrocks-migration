@@ -6,8 +6,8 @@ StarRocks-Migration-Tool主要的使用场景是从其他云将 StarRocks 存算
 *源集群如果是 StarRocks 非存算分离版本，请直接使用官方提供的迁移工具*
 
 ## 针对版本
-StarRocks 3.1.x 存算分离版本版本
-3.2.4以后的存算分离版本版本，请参考其他branch
+StarRocks 3.2.4+ 存算分离版本版本
+3.2.4之前的存算分离版本版本，请参考其他branch
 
 ## 架构
 ![架构图](./assets/starrocks_migration_tool.png)
