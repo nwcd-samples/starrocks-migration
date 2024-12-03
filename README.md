@@ -102,3 +102,16 @@ python3 app.py export --env .env_im_au
 ## 其他补充
 1. 使用导出导入方式进行数据迁移的原因
 StarRocks 3.1.x存算分离版本导出仅支持export导出，并且只支持csv格式
+2. starrocks-migration-task-trace-event 表的设计
+```
+task_name:任务名称
+格式：s3://{bucket_name}/{job_name}/{db_name}/{table_name}/{partition_name}/{file_name}
+数据类型：字符串
+
+status：任务状态
+数据类型：字符串
+
+
+update_time：任务更新时间
+数据类型：字符串
+```

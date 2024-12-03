@@ -4,62 +4,21 @@ import urllib.parse
 import boto3
 from datetime import datetime, timedelta
 
-region_name = "cn-northwest-1"
-max_parallel_count = 5
-time_diff = 10  # 十分钟内不容许上传相同的文档
+region_name = "eu-central-1"
+
 
 # ===========================需要修改或确认的配置参数================================
 dynamodb_task_trace_tb = 'starrocks-migration-task-trace-event'
-sqs_url = "https://sqs.cn-northwest-1.amazonaws.com.cn/027040934161/sam-data-plaftform-test"
+sqs_url = "https://sqs.eu-central-1.amazonaws.com/515491257789/starrocks_migration_queue"
 # ===========================需要修改或确认的配置参数================================
 
 FILE_STATUS_UPLOAD_TO_S3 = "FILE_UPLOAD_TO_S3"
-FILE_STATUS_READ_TO_IMPORT = "FILE_READ_TO_IMPORT"
-FILE_STATUS_IMPORTED = "FILE_IMPORTED"
-
-def check_key(dynamodb, task_name, file_name, cond):
-
-    response = dynamodb.query(
-        TableName=dynamodb_task_trace_tb,
-        Limit=100,
-        Select='ALL_ATTRIBUTES',
-        KeyConditions={
-            'task_name': {
-                'AttributeValueList': [
-                    {
-                        'S': task_name,
-                    },
-                ],
-                'ComparisonOperator': 'EQ'
-            },
-            'file_name': {
-                'AttributeValueList': [
-                    {
-                        'S': file_name,
-                    },
-                ],
-                'ComparisonOperator': 'EQ'
-            },
-            'event_time': {
-                'AttributeValueList': [
-                    {
-                        'S': cond
-                    },
-                ],
-                'ComparisonOperator': 'GT'
-            }
-        })
-    return len(response['Items'])
-
 
 def lambda_handler(event, context):
     print("Received event: " + str(event))
     now = datetime.now()
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-    condition = (now - timedelta(minutes=time_diff)
-                 ).strftime("%Y-%m-%d %H:%M:%S")
 
-    
     keys = [record['s3']['bucket']['name'] + "/" + record['s3']['object']['key']
             for record in event['Records']]
     task_count = 0
@@ -69,14 +28,14 @@ def lambda_handler(event, context):
         for key in keys:
             # 格式为 bucket_name/前缀路径(配置文件中配置)/task_name/db_name/table_name/partition_name/file_name.csv
             ukey = urllib.parse.unquote_plus(key, encoding='utf-8')
-            file_key = "s3://" + ukey
-
+            task_name = "s3://" + ukey
+            
             task_count += 1
             dynamodb.update_item(
                 TableName=dynamodb_task_trace_tb,
                 Key={
-                    'file_key': {'S': file_key},
-                    'event_time':  {'S': current_time}
+                    'task_name': {'S': task_name},
+                    'update_time':  {'S': current_time}
 
                 },
                 AttributeUpdates={
@@ -88,8 +47,8 @@ def lambda_handler(event, context):
                 }
             )
             k_info = {
-                "file_key": file_key,
-                "event_time": current_time,
+                "task_name": task_name,
+                "update_time": current_time,
                 "status": f"{FILE_STATUS_UPLOAD_TO_S3}"
             }
 
