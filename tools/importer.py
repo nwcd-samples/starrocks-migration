@@ -143,6 +143,7 @@ class IWorkerThread(threading.Thread):
                     time.sleep(sleep_time)
 
             except Exception as ex:
+                logger.error(f"[importer][{self.job_name}]===>{ex}")
                 conn.close()
                 conn = get_conn(cluster_type="target")
                 time.sleep(10)
@@ -211,8 +212,9 @@ def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str
                 
                 res = f"{label}:{status}==>{msg}"
                 if status == 'FINISHED':
-                    return True, res
+                    return True, ""
                 elif status == 'CANCELLED':
+                    logger.error(f"[importer][{job_name}]===>{res}")
                     return False, res
                 else:
                     time.sleep(2)
