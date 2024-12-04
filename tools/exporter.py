@@ -1,33 +1,10 @@
 import time
 from datetime import datetime
-import logging
-from logging.handlers import RotatingFileHandler
 from collections import deque
 import json
 import os
 from .mysql import get_conn
-
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-logger = logging.getLogger(__name__)
-
-# 设置日志级别
-logger.setLevel(logging.INFO)
-# 创建一个handler，用于写入日志文件
-handler = RotatingFileHandler(
-    'logs/export.log', maxBytes=100000, backupCount=3)
-logger.addHandler(handler)
-
-# 创建一个handler，用于将日志输出到控制台
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-logger.addHandler(console_handler)
-
-# 定义日志格式
-formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
+from .log import logger
 
 
 def pick_key(partition_range_str):
@@ -56,12 +33,14 @@ def check_task(conn, db_name, start_time: str, query_info) -> dict:
             ctime = row['CreateTime']
             if ctime < start_time:
                 continue
+            job_id = row['JobId']
             query_id = row['QueryId']
             task_str = row['TaskInfo']
+            error_msg= row['ErrorMsg']
             task_info = json.loads(task_str)
             partition = task_info['partitions'][0]
             tb = task_info['tbl']
-            summary = f"{query_id}_{tb}_{partition}"
+            summary = f"{job_id}_{query_id}_{tb}_{partition}"
             state = row['State']
             if state == 'PENDING' or state == 'EXPORTING':
                 running_jobs_count += 1
@@ -75,24 +54,35 @@ def check_task(conn, db_name, start_time: str, query_info) -> dict:
                     'tb': tb
                 }
                 if state == 'FINISHED':
-                    new_finished_jobs.append(summary)
+                    new_finished_jobs.append({
+                        "summary":summary,
+                        "msg": error_msg
+                    })
             else:
                 new_state = row['State']
                 old_state = query_info[query_id]['state']
                 query_info[query_id]['state'] = new_state
                 if old_state != new_state:
                     if new_state == 'FINISHED':
-                        new_finished_jobs.append(summary)
+                        new_finished_jobs.append({
+                        "summary":summary,
+                        "msg": error_msg
+                    })
                     if new_state == 'CANCELLED':
-                        new_failed_jobs.append(summary)
+                        new_failed_jobs.append({
+                        "summary":summary,
+                        "msg": error_msg
+                    })
 
         return running_jobs_count, new_finished_jobs, new_failed_jobs
 
 
-def export_partition(conn, db_name, table_name, dest: str, pt_name: str, aws_region: str, ak: str,
+def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str, pt_name: str, aws_region: str, ak: str,
                      sk: str):
     dest.endswith("/")
-    path = dest + f"{db_name}/{table_name}/{pt_name}" if dest.endswith("/") else f"{dest}/{db_name}/{table_name}/{pt_name}"
+    # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
+    # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
+    path = dest + f"{job_name}/{db_name}/{table_name}/{pt_name}/" if dest.endswith("/") else f"{dest}/{job_name}/{db_name}/{table_name}/{pt_name}/"
 
     if ak != "" and sk != "":
         command = f"""
@@ -131,7 +121,7 @@ def export_partition(conn, db_name, table_name, dest: str, pt_name: str, aws_reg
             cursor.execute(command)
             conn.commit()
 
-        logger.info(f"success to commit task {pt_name}")
+        logger.info(f"[exporter][{job_name}]===>success to commit task {pt_name}")
 
         # JOB_CMD = "SELECT LAST_QUERY_ID() as result"
         # with conn.cursor() as cursor:
@@ -141,8 +131,8 @@ def export_partition(conn, db_name, table_name, dest: str, pt_name: str, aws_reg
         #     return t['result']
 
     except Exception as ex:
-        logger.error(f"failed to export {pt_name}")
-        logger.error(ex)
+        logger.error(f"[exporter][{job_name}]===>failed to export {pt_name}")
+        logger.error(f"[exporter][{job_name}]===>{ex}")
 
 
 def get_tasks(table_name:str)->list:
@@ -172,9 +162,9 @@ def get_tasks(table_name:str)->list:
     return partitions
 
 
-def run(table_name:str):
-    DB_NAME = os.getenv("DB_NAME")
-    STORAGES = os.getenv("STORAGES")
+def run(job_name:str, table_name:str):
+    DB_NAME = os.getenv("SOURCE_DB_NAME")
+    STORAGES = os.getenv("STORAGES").split(",")
     AK = os.getenv("AK")
     SK = os.getenv("SK")
     AWS_REGION = os.getenv("AWS_REGION")
@@ -183,14 +173,13 @@ def run(table_name:str):
     if AK == "" or SK == "":
         dest = dest.replace("s3:", "s3a:")
 
-    CONCURRENCY = int(os.getenv("CONCURRENCY"))
+    CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
 
     # 向队列中添加任务
-    partitions = get_tasks()
+    partitions = get_tasks(table_name)
     task_deque = deque(partitions)
     failed_list = list()
 
-    logger.info("task begin")
     while len(task_deque) > 0:
         job_info = dict()
         now = datetime.now()
@@ -201,7 +190,7 @@ def run(table_name:str):
             task = task_deque.popleft()
             pt_name = task["name"]
             counter += 1
-            export_partition(conn, DB_NAME, table_name, dest,
+            export_partition(conn, job_name, DB_NAME, table_name, dest,
                              pt_name, AWS_REGION, AK, SK)
             time.sleep(0.1)
 
@@ -209,14 +198,14 @@ def run(table_name:str):
         while running:
             running_jobs_count, new_finished_jobs, new_failed_jobs = check_task(conn, DB_NAME, begin_timestr, job_info)
             for job in new_finished_jobs:
-                logger.info(f"success to finish job {job}")
+                logger.info(f"[exporter][{job_name}]===>success to finish job {job}")
             for job in new_failed_jobs:
                 failed_list.append(job)
-                logger.info(f"failed to finish job {job}")
+                logger.info(f"[exporter][{job_name}]===>failed to finish job {job}")
             if running_jobs_count == 0:
                 running = False
             else:
                 time.sleep(10)
         time.sleep(1)
 
-    logger.info(f"ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
+    logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")

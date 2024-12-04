@@ -1,44 +1,32 @@
 import random
 import time
-import logging
-from logging.handlers import RotatingFileHandler
 import threading
 import queue
 import boto3
+from datetime import datetime
+import json
 import os
 import uuid
 from .mysql import get_conn
+from .log import logger
 
 
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-logger = logging.getLogger(__name__)
-
-# 设置日志级别
-logger.setLevel(logging.INFO)
-# 创建一个handler，用于写入日志文件
-handler = RotatingFileHandler('logs/import.log', maxBytes=100000, backupCount=3)
-logger.addHandler(handler)
-
-# 创建一个handler，用于将日志输出到控制台
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-logger.addHandler(console_handler)
-
-# 定义日志格式
-formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
+FILE_STATUS_IMPORTING = "IMPORTING"
+FILE_STATUS_IMPORTED_SUCESS = "IMPORTED SUCESSFULLY"
+FILE_STATUS_IMPORTED_FAILED = "IMPORTED FAILED"
 
 
-class WorkerThread(threading.Thread):
-    def __init__(self, task_queue):
+class EWorkerThread(threading.Thread):
+    """
+    存量文件的迁移
+    """
+    def __init__(self, job_name, task_queue):
         threading.Thread.__init__(self)
+        self.job_name=job_name
         self.task_queue = task_queue
 
     def run(self):
-        conn = get_conn()
+        conn = get_conn(cluster_type="target")
         DB_NAME=os.getenv("DB_NAME")
         TABLE_NAME=os.getenv("TABLE_NAME")
         AK=os.getenv("AK")
@@ -50,16 +38,118 @@ class WorkerThread(threading.Thread):
            
                 sleep_time = random.uniform(0.01, 1.0)
                 time.sleep(sleep_time)
-                import_task(conn, DB_NAME, TABLE_NAME, task, AWS_REGION,AK, SK)
+                status, msg = import_task(conn, self.job_name, DB_NAME, TABLE_NAME, task, AWS_REGION,AK, SK)
                 self.task_queue.task_done()
             except queue.Empty:
                 # 如果队列为空，跳出循环
                 conn.close()
                 break
 
+class IWorkerThread(threading.Thread):
+    """
+    增量桶的迁移
+    """
+    def __init__(self, job_name):
+        threading.Thread.__init__(self)
+        self.job_name = job_name
+
+    def run(self):
+        conn = get_conn(cluster_type="target")
+        DB_NAME = os.getenv("TARGET_DB_NAME")
+        AK = os.getenv("AK")
+        SK = os.getenv("SK")
+        AWS_REGION = os.getenv("AWS_REGION")
+
+        recorder = os.getenv("RECORDER")
+        dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
+
+        queue_url = os.getenv("TASK_QUEUE")
+        sqs = boto3.client('sqs', region_name=AWS_REGION)
+
+        while True:
+            try:
+                response = sqs.receive_message(
+                    QueueUrl=queue_url,
+                    VisibilityTimeout=600
+                )
+
+                messages = response["Messages"]
+                logger.info(f"[importer][{self.job_name}]===>No task need to do")
+
+                task_info = list()
+                for msg in messages:
+                    body_str = msg["Body"]
+                    body = json.loads(body_str)
+                    receipt_handle = msg["ReceiptHandle"]
+                    sqs.delete_message(
+                        QueueUrl=queue_url,
+                        ReceiptHandle=receipt_handle
+                    )
+                    task_info.append(body)
+
+                now = datetime.now()
+                current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+                for body in task_info:
+                    task_name = body['task_name']
+                    print(task_name)
+                    res = dynamodb.update_item(
+                        TableName=recorder,
+                        Key={
+                            'task_name': {'S': task_name}
+
+                        },
+                        AttributeUpdates={
+                            'status': {
+                                'Value': {
+                                    "S": FILE_STATUS_IMPORTING
+                                }
+                            },
+                            'update_time': {
+                                'Value': {
+                                    "S": current_time
+                                }
+                            }
+                        }
+                    )
+                    time.sleep(1)
+                    # 格式为 s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
+                    # s3://tx-au-mock-data/sunexf/test2/sunim/data_point_val/p20231105/__starrocks_export_tmp_e8134bc5-b224-11ef-b192-0ac76da15273/data_e8134bc5-b224-11ef-b192-0ac76da15273_0_1_0_0.csv
+                    parts = task_name.split("/")
+                    table_name=parts[6]
+                    file_path = task_name
+                    if AK =="" or SK =="":
+                        file_path = task_name.replace("s3://", "s3a://")
+                    is_ok, msg = import_task(conn, self.job_name, DB_NAME, table_name, file_path, AWS_REGION, AK, SK)
+                    status = FILE_STATUS_IMPORTED_SUCESS if is_ok else FILE_STATUS_IMPORTED_FAILED
+                    dynamodb.update_item(
+                        TableName=recorder,
+                        Key={
+                            'task_name': {'S': task_name}
+                        },
+                        AttributeUpdates={
+                            'status': {
+                                'Value': {
+                                    "S": status
+                                }
+                            },
+                            'msg': {
+                                'Value': {
+                                    "S": msg
+                                }
+                            }
+                        }
+                    )
+                    sleep_time = random.uniform(0.01, 1.0)
+                    time.sleep(sleep_time)
+
+            except Exception as ex:
+                conn.close()
+                conn = get_conn(cluster_type="target")
+                time.sleep(10)
 
 
-def import_task(conn, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
+
+def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
     # 生成一个UUID（版本4）
     uuid_v4 = uuid.uuid4()
 
@@ -99,39 +189,39 @@ def import_task(conn, db_name,table_name, file_path: str,aws_region:str,ak="",sk
                 );
                 """  
 
-    logger.info(f"begin import label:{label} {file_path} to {table_name}")
+    logger.info(f"[importer][{job_name}]===>begin import label:{label} {file_path} to {table_name}")
     try:
         with conn.cursor() as cursor:
             cursor.execute(command)
             conn.commit()
 
+        time.sleep(2)
         # check status
         status_command=f"""
-        SELECT STATE FROM information_schema.loads WHERE LABEL = '{label}';
+        SELECT LABEL,STATE,ERROR_MSG FROM information_schema.loads WHERE LABEL = '{label}';
         """
         while True:
-            time.sleep(2)
             with conn.cursor() as cursor:
                 cursor.execute(status_command)
                 conn.commit()
                 row = cursor.fetchone()
-                status = row['STATE'] 
-
+                label = row['LABEL'] 
+                status = row['STATE']
+                msg = row['ERROR_MSG']
+                
+                res = f"{label}:{status}==>{msg}"
                 if status == 'FINISHED':
-                    logger.info(f"success to import {file_path} to {table_name}")
-                    break
+                    return True, res
                 elif status == 'CANCELLED':
-                    logger.info(f"failed to import {file_path} to {table_name}")
-                    break
+                    return False, res
                 else:
-                    time.sleep(5)
+                    time.sleep(2)
 
             
 
     except Exception as ex:
-        logger.info(f"failed to import {file_path} to {table_name}")
-        logger.error(ex)
-        logger.error(command)
+        logger.info(f"[importer][{job_name}]===>failed to import {file_path} to {table_name}")
+        return False, f"[importer][{job_name}]===>failed to import {file_path} to {table_name}"
 
 
 
@@ -195,31 +285,71 @@ def get_tasks():
 
     return objects
 
+def get_task():
+    AWS_REGION = os.getenv("AWS_REGION")
 
-def run(with_condition=False):
-    CONCURRENCY=os.getenv("CONCURRENCY")
+    recorder = os.getenv("RECORDER")
+    print(recorder)
+    dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 
-    task_queue = queue.Queue()  # 创建任务队列
-    # 向队列中添加任务
-    tasks = get_tasks()
-    
-    logger.info(f"the number of task is {len(tasks)}")
-    for task in tasks:
-        task_queue.put(task)
+    queue_url = os.getenv("TASK_QUEUE")
+    sqs = boto3.client('sqs', region_name=AWS_REGION)
 
-    # 创建并启动线程
+    response = sqs.receive_message(
+        QueueUrl=queue_url,
+        VisibilityTimeout=600
+    )
+    print(response)
+    if "Messages" not in response:
+        return
+    messages = response["Messages"]
+    for msg in messages:
+        body_str = msg["Body"]
+        body = json.loads(body_str)
+        receipt_handle = msg["ReceiptHandle"]
+        sqs.delete_message(
+            QueueUrl=queue_url,
+            ReceiptHandle=receipt_handle
+    )
 
+    response = dynamodb.get_item(
+    TableName=recorder,
+     Key={
+        'task_name': {'S': 'test'}
+    })
+    print(response)
+                
+
+def run(job_name:str, incremental=True):
+    CONCURRENCY=int(os.getenv("IMPORT_CONCURRENCY"))
     threads = []
-    for i in range(0, int(CONCURRENCY)):
-        thread = WorkerThread(task_queue)
-        threads.append(thread)
-        thread.start()
 
-    # 等待队列中的所有任务完成
-    task_queue.join()
+    if incremental == False:
+        task_queue = queue.Queue()  # 创建任务队列
+        # 向队列中添加任务
+        tasks = get_tasks()
+        logger.info(f"[importer][{job_name}]===>the number of task is {len(tasks)}")
+        for task in tasks:
+            task_queue.put(task)
 
-    # 所有任务完成后，停止线程
+        # 创建并启动线程
+        for i in range(0, CONCURRENCY):
+            thread = EWorkerThread(task_queue, job_name)
+            threads.append(thread)
+            thread.start()
+
+        # 等待队列中的所有任务完成
+        task_queue.join()
+    else:
+        for i in range(0, CONCURRENCY):
+            thread = IWorkerThread(job_name)
+            threads.append(thread)
+            thread.start()
+
+            # 所有任务完成后，停止线程
     for thread in threads:
         thread.join()
 
-    logger.info(f"ALL TASK DONE !!! bingo!")
+
+    logger.info(f"[importer][{job_name}]===>NOT TO BE　HERE")
+

@@ -99,7 +99,7 @@ python3 app.py export --env .env_ex_au
 python3 app.py export --env .env_im_au
 
 
-## 其他补充
+## 注意
 1. 使用导出导入方式进行数据迁移的原因
 StarRocks 3.1.x存算分离版本导出仅支持export导出，并且只支持csv格式
 2. starrocks-migration-task-trace-event 表的设计
@@ -115,3 +115,10 @@ status：任务状态
 update_time：任务更新时间
 数据类型：字符串
 ```
+3. 需要配置dynamodb vpc gateway endpoint
+4. 需要配置s3 vpc gateway endpoint(便宜)
+5. 请检查导出文件路径信息是否如下可是（可以查看s3或者 dynamodb中的信息)
+```
+s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
+```
+

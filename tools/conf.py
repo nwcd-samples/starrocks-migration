@@ -25,13 +25,3 @@ def load_env(filename='.env'):
 
 def get_env(key:str, default_v:str):
     return os.getenv(key, default_v)
-
-
-                    
-
-
-    
-
-
-
-    
