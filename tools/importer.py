@@ -3,17 +3,22 @@ import time
 import threading
 import queue
 import boto3
+from boto3.dynamodb.conditions import Key
 from datetime import datetime
 import json
 import os
 import uuid
 from .mysql import get_conn
-from .log import logger
+from .log import get_logger
+
+
+logger = get_logger("importer")
 
 
 FILE_STATUS_IMPORTING = "IMPORTING"
 FILE_STATUS_IMPORTED_SUCESS = "IMPORTED SUCESSFULLY"
 FILE_STATUS_IMPORTED_FAILED = "IMPORTED FAILED"
+FILE_STATUS_RETRY="IMPORTED RETRY"
 
 
 class EWorkerThread(threading.Thread):
@@ -91,7 +96,8 @@ class IWorkerThread(threading.Thread):
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
                 for body in task_info:
                     task_name = body['task_name']
-                    print(task_name)
+                    if task_name == "ALL TASK DONE":
+                        return
                     res = dynamodb.update_item(
                         TableName=recorder,
                         Key={
@@ -143,7 +149,6 @@ class IWorkerThread(threading.Thread):
                     time.sleep(sleep_time)
 
             except Exception as ex:
-                logger.error(f"[importer][{self.job_name}]===>{ex}")
                 conn.close()
                 conn = get_conn(cluster_type="target")
                 time.sleep(10)
@@ -152,11 +157,13 @@ class IWorkerThread(threading.Thread):
 
 def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
     # 生成一个UUID（版本4）
+    now = datetime.now()
+    current_time = now.strftime("%Y_%m_%d_%H_%M_%S")
     uuid_v4 = uuid.uuid4()
-
+    ukey = str(uuid_v4)[-4:-1]
     # 将UUID转换为字符串并去除连字符
     uuid_str = uuid_v4.hex
-    label = f"{table_name}_{uuid_str}"
+    label = f"{table_name}_{current_time}_{ukey}"
 
     if ak=="" and sk=="":
         command = f"""
@@ -212,9 +219,10 @@ def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str
                 
                 res = f"{label}:{status}==>{msg}"
                 if status == 'FINISHED':
-                    return True, ""
+                    logger.info(f"[importer][{job_name}]===>Succeed in importing {res}")
+                    return True, res
                 elif status == 'CANCELLED':
-                    logger.error(f"[importer][{job_name}]===>{res}")
+                    logger.error(f"[importer][{job_name}]===>Failed to import {res}")
                     return False, res
                 else:
                     time.sleep(2)
@@ -222,8 +230,8 @@ def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str
             
 
     except Exception as ex:
-        logger.info(f"[importer][{job_name}]===>failed to import {file_path} to {table_name}")
-        return False, f"[importer][{job_name}]===>failed to import {file_path} to {table_name}"
+        logger.error(f"[importer][{job_name}]===>failed to import {file_path} to {table_name} due to {ex}")
+        return False, str(ex)
 
 
 
@@ -321,6 +329,68 @@ def get_task():
     })
     print(response)
                 
+def get_failed_tasks(job_name:str):
+
+    AWS_REGION = os.getenv("AWS_REGION")
+    RECORDER = os.getenv("RECORDER")
+    STORAGES = os.getenv("STORAGES").split(",")
+    storage = STORAGES[-1]
+    key_prefix_str=f"{storage}/{job_name}"
+    filter="IMPORTED FAILED"
+    # 初始化boto3的DynamoDB服务客户端
+    dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)  # 替换为你的区域
+
+    # 指定你的DynamoDB表
+    table = dynamodb.Table(RECORDER)
+
+    # 计算总的段数，这取决于你的表的大小和需求
+    total_segments = 10  # 例如，你可以设置为10
+
+    # 扫描操作
+    def scan_table(segment, total_segments, key_prefix):
+        scan_kwargs = {
+            'Segment': segment,
+            'TotalSegments': total_segments,
+            'FilterExpression': Key('task_name').begins_with(key_prefix) & Key('status').eq(filter)
+        }
+        response = table.scan(**scan_kwargs)
+        return response
+
+    # 并行执行扫描
+    results = []
+    for segment in range(0, total_segments):
+        results.append(scan_table(segment, total_segments, key_prefix_str))
+
+    # 合并结果
+    all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
+    logger.info(all_items)
+    return all_items
+
+
+def retry_failed(job_name:str):
+    items = get_failed_tasks(job_name)
+
+    AWS_REGION = os.getenv("AWS_REGION")
+    queue_url = os.getenv("TASK_QUEUE")
+    sqs = boto3.client('sqs', region_name=AWS_REGION)
+
+    now = datetime.now()
+    current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+    for task in items:
+        k_info = {
+            "task_name": task,
+            "update_time": current_time,
+            "status": f"{FILE_STATUS_RETRY}"
+        }
+
+        str_info = json.dumps(k_info)
+
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=str_info,
+            DelaySeconds=0
+        )
+
 
 def run(job_name:str, incremental=True):
     CONCURRENCY=int(os.getenv("IMPORT_CONCURRENCY"))
@@ -353,5 +423,5 @@ def run(job_name:str, incremental=True):
         thread.join()
 
 
-    logger.info(f"[importer][{job_name}]===>NOT TO BE　HERE")
+    logger.info(f"[importer][{job_name}]===>JOB FINISHED")
 

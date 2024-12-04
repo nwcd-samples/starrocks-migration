@@ -1,6 +1,6 @@
 
 from tools import conf
-from tools import exporter, importer
+from tools import exporter, importer, validation
 from tools.sync import Sync
 import argparse
 import os
@@ -25,6 +25,14 @@ def main():
     parser_import.add_argument("--job", type=str, help="启动作业名称")
     parser_import.add_argument("--env", type=str, help="配置文件地址", default=".env")
 
+    parser_retry = subparsers.add_parser("retry", help="重试")
+    parser_retry.add_argument("--job", type=str, help="启动作业名称")
+    parser_retry.add_argument("--type", type=str, help="重试的类型：import 或者 export , 默认 import", default="import")
+    parser_retry.add_argument("--env", type=str, help="配置文件地址", default=".env")
+
+    parser_va = subparsers.add_parser("validation", help="验证")
+    parser_va.add_argument("--env", type=str, help="配置文件地址", default=".env")
+
     args = parser.parse_args()
     if args.command == "export":
         env_path = args.env
@@ -38,13 +46,24 @@ def main():
         env_path = args.env
         job_name = args.job
         conf.load_env(env_path)
-        importer.run(job_name, incremental=False)
+        importer.run(job_name)
     elif args.command == "sync":
         env_path = args.env
         job_name = args.job
         conf.load_env(env_path)
         syncer = Sync()
         syncer.run(job_name)
+
+    elif args.command == "retry":
+        env_path = args.env
+        job_name = args.job
+        conf.load_env(env_path)
+        importer.retry_failed(job_name)
+
+    elif args.command == "validation":
+        env_path = args.env
+        conf.load_env(env_path)
+        validation.run()
     else:
         parser.print_help()
 

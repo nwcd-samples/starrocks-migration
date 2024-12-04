@@ -3,9 +3,12 @@ from datetime import datetime
 from collections import deque
 import json
 import os
+import boto3
 from .mysql import get_conn
-from .log import logger
+from .log import get_logger
 
+
+logger = get_logger("exporter")
 
 def pick_key(partition_range_str):
     # 首先，根据"keys: ["分割字符串，然后取第二部分
@@ -15,66 +18,55 @@ def pick_key(partition_range_str):
     return key1_str, key2_str
 
 
-def check_task(conn, db_name, start_time: str, query_info) -> dict:
-    JOB_CMD1 = f"SHOW EXPORT FROM {db_name}"
+def get_summit_task(conn, db_name):
+    query_ids = list()
+    cmd1 = f"""SHOW EXPORT FROM {db_name} WHERE STATE='PENDING'"""
+    cmd2 = f"""SHOW EXPORT FROM {db_name} WHERE STATE='EXPORTING'"""
+    for cmd in [cmd1, cmd2]:
+        with conn.cursor() as cursor:
+            cursor.execute(cmd)
+            conn.commit()
+            rows = cursor.fetchall()
+            for row in rows:
+                query_ids.append(row['QueryId'])
+    
+    return query_ids
+
+def check_task(conn, db_name, query_ids: list) -> dict:
+    status = dict()
     running_jobs_count = 0
-    new_finished_jobs = []
-    new_failed_jobs = []
 
-    with conn.cursor() as cursor:
-        cursor.execute(JOB_CMD1)
-        conn.commit()
-        rows = cursor.fetchall()
-        # PENDING：表示查询待调度的导出作业。
-        # EXPORTING：表示查询正在执行中的导出作业。
-        # FINISHED：表示查询成功完成的导出作业。
-        # CANCELLED：表示查询失败的导出作业。
-        for row in rows:
-            ctime = row['CreateTime']
-            if ctime < start_time:
-                continue
-            job_id = row['JobId']
-            query_id = row['QueryId']
-            task_str = row['TaskInfo']
-            error_msg= row['ErrorMsg']
-            task_info = json.loads(task_str)
-            partition = task_info['partitions'][0]
-            tb = task_info['tbl']
-            summary = f"{job_id}_{query_id}_{tb}_{partition}"
-            state = row['State']
-            if state == 'PENDING' or state == 'EXPORTING':
-                running_jobs_count += 1
+    for query_id_str in query_ids:
+        JOB_CMD1 = f"""SHOW EXPORT FROM {db_name} WHERE QUERYID='{query_id_str}'"""
+        with conn.cursor() as cursor:
+            cursor.execute(JOB_CMD1)
+            conn.commit()
+            rows = cursor.fetchall()
+            # PENDING：表示查询待调度的导出作业。
+            # EXPORTING：表示查询正在执行中的导出作业。
+            # FINISHED：表示查询成功完成的导出作业。
+            # CANCELLED：表示查询失败的导出作业。
+            for row in rows:
+                job_id = row['JobId']
+                query_id = row['QueryId']
+                task_str = row['TaskInfo']
+                error_msg= row['ErrorMsg']
+                task_info = json.loads(task_str)
+                partition = task_info['partitions'][0]
+                tb = task_info['tbl']
+                summary = f"{job_id}_{query_id}_{tb}_{partition}"
+                state = row['State']
+                if state == 'PENDING' or state == 'EXPORTING':
+                    running_jobs_count += 1
 
-            if query_id not in query_info:
-
-                query_info[query_id] = {
-                    'create_time': ctime,
-                    'state': state,
-                    'partition': partition,
-                    'tb': tb
-                }
-                if state == 'FINISHED':
-                    new_finished_jobs.append({
+                
+                status[query_id] = {
+                        'state': state,
                         "summary":summary,
                         "msg": error_msg
-                    })
-            else:
-                new_state = row['State']
-                old_state = query_info[query_id]['state']
-                query_info[query_id]['state'] = new_state
-                if old_state != new_state:
-                    if new_state == 'FINISHED':
-                        new_finished_jobs.append({
-                        "summary":summary,
-                        "msg": error_msg
-                    })
-                    if new_state == 'CANCELLED':
-                        new_failed_jobs.append({
-                        "summary":summary,
-                        "msg": error_msg
-                    })
-
-        return running_jobs_count, new_finished_jobs, new_failed_jobs
+                    }
+             
+    return running_jobs_count, status
 
 
 def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str, pt_name: str, aws_region: str, ak: str,
@@ -136,11 +128,11 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
 
 
 def get_tasks(table_name:str)->list:
-    # TASK_FILTER = os.getenv("TASK_FILTER", "")
-    # if TASK_FILTER:
-    #     parts = TASK_FILTER.split(",")
-    #     partitions = [{"name": pt_name} for pt_name in parts]
-    #     return partitions
+    TASK_FILTER = os.getenv("TASK_FILTER", "")
+    if TASK_FILTER:
+        parts = TASK_FILTER.split(",")
+        partitions = [{"name": pt_name} for pt_name in parts]
+        return partitions
     
     conn = get_conn()
 
@@ -178,10 +170,8 @@ def run(job_name:str, table_name:str):
     # 向队列中添加任务
     partitions = get_tasks(table_name)
     task_deque = deque(partitions)
-    failed_list = list()
 
     while len(task_deque) > 0:
-        job_info = dict()
         now = datetime.now()
         begin_timestr = now.strftime("%Y-%m-%d %H:%M:%S")
         counter = 0
@@ -192,20 +182,48 @@ def run(job_name:str, table_name:str):
             counter += 1
             export_partition(conn, job_name, DB_NAME, table_name, dest,
                              pt_name, AWS_REGION, AK, SK)
-            time.sleep(0.1)
 
+        
+        query_ids = get_summit_task(conn, DB_NAME)
+        time.sleep(2)
         running = True
         while running:
-            running_jobs_count, new_finished_jobs, new_failed_jobs = check_task(conn, DB_NAME, begin_timestr, job_info)
-            for job in new_finished_jobs:
-                logger.info(f"[exporter][{job_name}]===>success to finish job {job}")
-            for job in new_failed_jobs:
-                failed_list.append(job)
-                logger.info(f"[exporter][{job_name}]===>failed to finish job {job}")
+            running_jobs_count, status = check_task(conn, DB_NAME, query_ids)
+            print(running_jobs_count)
             if running_jobs_count == 0:
                 running = False
+                print(status)
+                for key in status:
+                    job = status[key]["summary"]
+                    logger.info(status[key]["state"])
+                    if status[key]["state"] == "FINISHED":
+                        logger.info(f"[exporter][{job_name}]===>Succeed in exporting job {job}")
+                    else:
+                        error_msg = status[key]["msg"]
+                        logger.error(f"[exporter][{job_name}]===>Failed to finish job {job} due to {error_msg}")
             else:
-                time.sleep(10)
+                time.sleep(5)
         time.sleep(1)
 
+
+    
+    time.sleep(60)
+    k_info = {
+        "task_name": "ALL TASK DONE",
+        "update_time": "",
+        "status": ""
+    }
+
+    # 告诉immporter ,导出任务结束了
+    str_info = json.dumps(k_info)
+    queue_url = os.getenv("TASK_QUEUE")
+    importer_count=int(os.getenv("IMPORT_CONCURRENCY"))
+    sqs = boto3.client('sqs', region_name=AWS_REGION)
+    for i in range(0, importer_count):
+        sqs.send_message(
+                QueueUrl=queue_url,
+                MessageBody=str_info,
+                DelaySeconds=0
+        )
+        time.sleep(1)
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
