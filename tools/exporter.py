@@ -6,6 +6,7 @@ import os
 import boto3
 from .mysql import get_conn
 from .log import get_logger
+from .helper import send_task_done_notification
 
 
 logger = get_logger("exporter")
@@ -127,13 +128,29 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
         logger.error(f"[exporter][{job_name}]===>{ex}")
 
 
+
+
 def get_tasks(table_name:str)->list:
-    TASK_FILTER = os.getenv("TASK_FILTER", "")
-    if TASK_FILTER:
-        parts = TASK_FILTER.split(",")
-        partitions = [{"name": pt_name} for pt_name in parts]
-        return partitions
-    
+    # filter method可以有如下类型：EACH,STARTWITH,ENDWITH,RANGE
+    task_filter = os.getenv("TASK_FILTER", "")
+    if task_filter:
+        if task_filter.startswith("EACH("):
+            parts = task_filter[len("EACH("):-1].split(",")
+            partitions = [{"name": pt_name} for pt_name in parts]
+            return partitions
+        elif task_filter.startswith("RANGE("):
+            parts = task_filter[len("RANGE("):-1].split(",")
+            begin = parts[0]
+            end = parts[-1]
+        elif task_filter.startswith("STARTWITH("):
+            parts = task_filter[len("STARTWITH("):-1].split(",")
+            begin = parts[0]
+            end = ""
+        elif task_filter.startswith("ENDWITH("):
+            parts = task_filter[len("ENDWITH("):-1].split(",")
+            begin = ""
+            end = parts[-1]
+
     conn = get_conn()
 
     cmd_partition = f"SHOW PARTITIONS FROM {table_name}"
@@ -144,7 +161,14 @@ def get_tasks(table_name:str)->list:
         conn.commit()
         rows = cursor.fetchall()
         for row in rows:
-            # begin, end = pick_key(row["Range"])
+            if begin:
+                if row["PartitionName"] < begin:
+                    continue
+
+            if end:
+                if row["PartitionName"] >= end:
+                    break
+            
             partitions.append(
                 {
                     "name": row["PartitionName"]
@@ -154,7 +178,7 @@ def get_tasks(table_name:str)->list:
     return partitions
 
 
-def run(job_name:str, table_name:str):
+def run(job_name:str, table_name:str, partition_name = ""):
     DB_NAME = os.getenv("SOURCE_DB_NAME")
     STORAGES = os.getenv("STORAGES").split(",")
     AK = os.getenv("AK")
@@ -168,7 +192,13 @@ def run(job_name:str, table_name:str):
     CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
 
     # 向队列中添加任务
-    partitions = get_tasks(table_name)
+    if partition_name:
+        partitions = [ {
+            "name": partition_name
+        }]
+    else:
+        partitions = get_tasks(table_name)
+        
     task_deque = deque(partitions)
 
     while len(task_deque) > 0:
@@ -176,54 +206,39 @@ def run(job_name:str, table_name:str):
         begin_timestr = now.strftime("%Y-%m-%d %H:%M:%S")
         counter = 0
         conn = get_conn()
-        while counter < CONCURRENCY and len(task_deque) > 0:
-            task = task_deque.popleft()
-            pt_name = task["name"]
-            counter += 1
-            export_partition(conn, job_name, DB_NAME, table_name, dest,
-                             pt_name, AWS_REGION, AK, SK)
+        try:
+            while counter < CONCURRENCY and len(task_deque) > 0:
+                task = task_deque.popleft()
+                pt_name = task["name"]
+                counter += 1
+                export_partition(conn, job_name, DB_NAME, table_name, dest,
+                                pt_name, AWS_REGION, AK, SK)
 
-        
-        query_ids = get_summit_task(conn, DB_NAME)
-        time.sleep(2)
-        running = True
-        while running:
-            running_jobs_count, status = check_task(conn, DB_NAME, query_ids)
-            print(running_jobs_count)
-            if running_jobs_count == 0:
-                running = False
-                print(status)
-                for key in status:
-                    job = status[key]["summary"]
-                    logger.info(status[key]["state"])
-                    if status[key]["state"] == "FINISHED":
-                        logger.info(f"[exporter][{job_name}]===>Succeed in exporting job {job}")
-                    else:
-                        error_msg = status[key]["msg"]
-                        logger.error(f"[exporter][{job_name}]===>Failed to finish job {job} due to {error_msg}")
-            else:
-                time.sleep(5)
-        time.sleep(1)
+            
+            query_ids = get_summit_task(conn, DB_NAME)
+            time.sleep(5)
+            running = True
+            while running:
+                running_jobs_count, status = check_task(conn, DB_NAME, query_ids)
+                if running_jobs_count == 0:
+                    running = False
+                    for key in status:
+                        job = status[key]["summary"]
+                        if status[key]["state"] == "FINISHED":
+                            logger.info(f"[exporter][{job_name}]===>Succeed in exporting job {job}")
+                        else:
+                            error_msg = status[key]["msg"]
+                            logger.error(f"[exporter][{job_name}]===>Failed to finish job {job} due to {error_msg}")
+                else:
+                    time.sleep(5)
+            time.sleep(2)
+        except Exception as ex:
+            logger.error(f"[exporter][{job_name}]===>Failed to finish job {job} due to {ex}, reconnecting...")
+            conn.close()
+            time.sleep(60)
+            conn = get_conn()
 
 
-    
     time.sleep(60)
-    k_info = {
-        "task_name": "ALL TASK DONE",
-        "update_time": "",
-        "status": ""
-    }
-
-    # 告诉immporter ,导出任务结束了
-    str_info = json.dumps(k_info)
-    queue_url = os.getenv("TASK_QUEUE")
-    importer_count=int(os.getenv("IMPORT_CONCURRENCY"))
-    sqs = boto3.client('sqs', region_name=AWS_REGION)
-    for i in range(0, importer_count):
-        sqs.send_message(
-                QueueUrl=queue_url,
-                MessageBody=str_info,
-                DelaySeconds=0
-        )
-        time.sleep(1)
+    send_task_done_notification()
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")

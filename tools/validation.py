@@ -41,15 +41,17 @@ def get_tasks(conn, table_name:str)->list:
 
 def run():
     logger = get_logger("validation")
-    table_name_str = os.getenv("TABLE_NAMES")
+    table_name_str = os.getenv("TABLE_NAME")
     table_names = table_name_str.split(",")
-    conn = get_conn()
-    dest = get_conn(cluster_type="target")
+    
     notmatch = []
+
     for table_name in table_names:
-        logger.info(f"begin analyze the table {table_name}")
+        logger.info(f"====================>begin analyze the table {table_name}")
+        conn = get_conn()
+        dest = get_conn(cluster_type="target")
+
         partitions = get_tasks(conn, table_name)
-        logger.info(partitions)
         for partition in partitions:
             name =f"{table_name}_{partition['name']}"
             key = partition['key']
@@ -66,22 +68,28 @@ def run():
                 for row in rows:
                     pt_name = row["name"]
                     source_count =row["row_count"]
-
-            with dest.cursor() as cursor:
-                cursor.execute(cmd)
-                dest.commit()
-                rows = cursor.fetchall()
-                for row in rows:
-                    pt_name = row["name"]
-                    target_count=row["row_count"]
+            try:
+                with dest.cursor() as cursor:
+                    cursor.execute(cmd)
+                    dest.commit()
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        pt_name = row["name"]
+                        target_count=row["row_count"]
+            except Exception as ex:
+                logger.error(cmd)
+                logger.error(ex)
             
 
             if source_count != target_count:
                 logger.error(f"{name}==>{source_count} != {target_count}")
-                notmatch.append()
+                notmatch.append(partition['name'])
             else:
                 logger.info(f"{name}==>{source_count} == {target_count}")
 
-    logger.info("done!!!")
-            
+        conn.close()
+        dest.close()
 
+    logger.error(f"not match partitions {notmatch}")
+    logger.info("donepr!!!")
+            

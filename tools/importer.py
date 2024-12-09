@@ -3,13 +3,14 @@ import time
 import threading
 import queue
 import boto3
-from boto3.dynamodb.conditions import Key
+
 from datetime import datetime
 import json
 import os
 import uuid
 from .mysql import get_conn
 from .log import get_logger
+from .helper import send_task_done_notification
 
 
 logger = get_logger("importer")
@@ -18,7 +19,7 @@ logger = get_logger("importer")
 FILE_STATUS_IMPORTING = "IMPORTING"
 FILE_STATUS_IMPORTED_SUCESS = "IMPORTED SUCESSFULLY"
 FILE_STATUS_IMPORTED_FAILED = "IMPORTED FAILED"
-FILE_STATUS_RETRY="IMPORTED RETRY"
+
 
 
 class EWorkerThread(threading.Thread):
@@ -31,7 +32,6 @@ class EWorkerThread(threading.Thread):
         self.task_queue = task_queue
 
     def run(self):
-        conn = get_conn(cluster_type="target")
         DB_NAME=os.getenv("DB_NAME")
         TABLE_NAME=os.getenv("TABLE_NAME")
         AK=os.getenv("AK")
@@ -43,11 +43,10 @@ class EWorkerThread(threading.Thread):
            
                 sleep_time = random.uniform(0.01, 1.0)
                 time.sleep(sleep_time)
-                status, msg = import_task(conn, self.job_name, DB_NAME, TABLE_NAME, task, AWS_REGION,AK, SK)
+                status, msg = import_task(self.job_name, DB_NAME, TABLE_NAME, task, AWS_REGION,AK, SK)
                 self.task_queue.task_done()
             except queue.Empty:
                 # 如果队列为空，跳出循环
-                conn.close()
                 break
 
 class IWorkerThread(threading.Thread):
@@ -59,7 +58,7 @@ class IWorkerThread(threading.Thread):
         self.job_name = job_name
 
     def run(self):
-        conn = get_conn(cluster_type="target")
+        
         DB_NAME = os.getenv("TARGET_DB_NAME")
         AK = os.getenv("AK")
         SK = os.getenv("SK")
@@ -125,7 +124,7 @@ class IWorkerThread(threading.Thread):
                     file_path = task_name
                     if AK =="" or SK =="":
                         file_path = task_name.replace("s3://", "s3a://")
-                    is_ok, msg = import_task(conn, self.job_name, DB_NAME, table_name, file_path, AWS_REGION, AK, SK)
+                    is_ok, msg = import_task(self.job_name, DB_NAME, table_name, file_path, AWS_REGION, AK, SK)
                     status = FILE_STATUS_IMPORTED_SUCESS if is_ok else FILE_STATUS_IMPORTED_FAILED
                     dynamodb.update_item(
                         TableName=recorder,
@@ -149,22 +148,19 @@ class IWorkerThread(threading.Thread):
                     time.sleep(sleep_time)
 
             except Exception as ex:
-                conn.close()
-                conn = get_conn(cluster_type="target")
                 time.sleep(10)
 
 
 
-def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
+def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
     # 生成一个UUID（版本4）
     now = datetime.now()
     current_time = now.strftime("%Y_%m_%d_%H_%M_%S")
     uuid_v4 = uuid.uuid4()
     ukey = str(uuid_v4)[-4:-1]
-    # 将UUID转换为字符串并去除连字符
-    uuid_str = uuid_v4.hex
     label = f"{table_name}_{current_time}_{ukey}"
 
+    
     if ak=="" and sk=="":
         command = f"""
                 LOAD LABEL {db_name}.{label}
@@ -198,6 +194,7 @@ def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str
                 """  
 
     logger.info(f"[importer][{job_name}]===>begin import label:{label} {file_path} to {table_name}")
+    conn = get_conn(cluster_type="target")
     try:
         with conn.cursor() as cursor:
             cursor.execute(command)
@@ -230,6 +227,7 @@ def import_task(conn,job_name, db_name,table_name, file_path: str,aws_region:str
             
 
     except Exception as ex:
+        conn.close()
         logger.error(f"[importer][{job_name}]===>failed to import {file_path} to {table_name} due to {ex}")
         return False, str(ex)
 
@@ -328,68 +326,6 @@ def get_task():
         'task_name': {'S': 'test'}
     })
     print(response)
-                
-def get_failed_tasks(job_name:str):
-
-    AWS_REGION = os.getenv("AWS_REGION")
-    RECORDER = os.getenv("RECORDER")
-    STORAGES = os.getenv("STORAGES").split(",")
-    storage = STORAGES[-1]
-    key_prefix_str=f"{storage}/{job_name}"
-    filter="IMPORTED FAILED"
-    # 初始化boto3的DynamoDB服务客户端
-    dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)  # 替换为你的区域
-
-    # 指定你的DynamoDB表
-    table = dynamodb.Table(RECORDER)
-
-    # 计算总的段数，这取决于你的表的大小和需求
-    total_segments = 10  # 例如，你可以设置为10
-
-    # 扫描操作
-    def scan_table(segment, total_segments, key_prefix):
-        scan_kwargs = {
-            'Segment': segment,
-            'TotalSegments': total_segments,
-            'FilterExpression': Key('task_name').begins_with(key_prefix) & Key('status').eq(filter)
-        }
-        response = table.scan(**scan_kwargs)
-        return response
-
-    # 并行执行扫描
-    results = []
-    for segment in range(0, total_segments):
-        results.append(scan_table(segment, total_segments, key_prefix_str))
-
-    # 合并结果
-    all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
-    logger.info(all_items)
-    return all_items
-
-
-def retry_failed(job_name:str):
-    items = get_failed_tasks(job_name)
-
-    AWS_REGION = os.getenv("AWS_REGION")
-    queue_url = os.getenv("TASK_QUEUE")
-    sqs = boto3.client('sqs', region_name=AWS_REGION)
-
-    now = datetime.now()
-    current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-    for task in items:
-        k_info = {
-            "task_name": task,
-            "update_time": current_time,
-            "status": f"{FILE_STATUS_RETRY}"
-        }
-
-        str_info = json.dumps(k_info)
-
-        sqs.send_message(
-            QueueUrl=queue_url,
-            MessageBody=str_info,
-            DelaySeconds=0
-        )
 
 
 def run(job_name:str, incremental=True):

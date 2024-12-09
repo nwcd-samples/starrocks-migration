@@ -51,7 +51,7 @@ class Sync:
         thread.start()
 
         # start exporter
-        table_name_str = os.getenv("TABLE_NAMES")
+        table_name_str = os.getenv("TABLE_NAME")
         table_names = table_name_str.split(",")
         for table_name in table_names:
             logger.info(f"Begin to export table {table_name}")

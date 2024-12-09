@@ -30,16 +30,43 @@ StarRocks 3.1.x 存算分离版本版本
 ### 前提条件
 1. 创建名为 starrocks-migration-task-trace-event 的Dyanmodb 做为迁移任务状态的记录表
 2. 创建一个普通的SQS队列，用于任务队列
+3. 至少创建好一个中间的 S3 桶，并且配置好VPC S3 gateway endpoint,保证能通过内网访问S3 
 3. 编辑 file_event.py 中的配置部分
 4. 根据 配置文件说明，编辑.env文件，配置好源集群，目标集群，备份对象存储信息
 
+
+### 手动部署
+*Task Manager 建议部署在AWS EC2中，也可以部署在其他云的云主机中*
+*必须设置好前提条件中的所需内容*
+1. git clone 本项目代码在AWS EC2中
+2. 配置EC2的绑定的角色，角色权限需要具有读写DynamoDB和SQS的权限
+3. 创建 Lambda函数，代码文件为 file_event.py
+
+
 ### 存量迁移
-1. 使用 DTH 同步源端和目标端对象存储
-2. 在目标端的aws 环境 创建lambda函数,lambda函数的代码参考文件 file_event.py
-3. 配置该lambda函数做为目标端对象存储s3 的event triger
-4. 启动 Task Manager
+1. 如果使用 DTH， 请根据.env配置文件中的说明，分别在源端和目标端创建一个对象存储桶。 同步源端和目标端对象存储
+2. 如果使用专线，只需要在目标端配置一个S3桶，但是需要配置好VPC S3 gateway endpoint
+3. 在目标端的aws 环境 创建lambda函数,lambda函数的代码参考文件 file_event.py
+5. 配置该lambda函数做为目标端对象存储s3 的event triger
+6. 在一个控制台启动 Task Manager的导入监听程序
 ```
-python3 app.py sync --env .env
+python3 taskmanager.py import --env .env --job test1 
+```
+7. 新启动一个控制台，启动Task Manager 的导出程序
+```
+python3 taskmanager.py export --env .env --job test1 
+```
+8. 查看其他命令可以
+```
+python3 taskmanager.py -h
+```
+![命令说明](./assets/commands.png)
+
+
+例如：
+```
+## 重新导入partition  p20241108 的所有数据
+python3 taskmanager.py retry --job forfill --content p20241108
 ```
 
 ### 增量迁移
@@ -82,12 +109,7 @@ TARGET_DB_NAME=sungorwpro
 TABLE_NAMES=data_point_val,data_point_user
 TASK_FILTER=pt2021111
 ```
-## 部署说明
-### 手动部署
-*Task Manager 建议部署在AWS EC2中，也可以部署在其他云的云主机中*
-1. git clone 本项目代码在AWS EC2中
-2. 配置EC2的绑定的角色，角色权限需要具有读写DynamoDB和SQS的权限
-3. 创建 Lambda函数，代码文件为 file_event.py
+## 其他部署方式
 
 ### CloudFormation
 开发中...
@@ -105,7 +127,7 @@ StarRocks 3.1.x存算分离版本导出仅支持export导出，并且只支持cs
 2. starrocks-migration-task-trace-event 表的设计
 ```
 task_name:任务名称
-格式：s3://{bucket_name}/{job_name}/{db_name}/{table_name}/{partition_name}/{file_name}
+格式：s3://{bucket_name}/自定义存储前缀/{job_name}/{db_name}/{table_name}/{partition_name}/{file_name}
 数据类型：字符串
 
 status：任务状态

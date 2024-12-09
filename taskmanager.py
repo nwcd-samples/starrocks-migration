@@ -1,6 +1,7 @@
 
 from tools import conf
 from tools import exporter, importer, validation
+from tools.retry import RetryFactory, RetryAction
 from tools.sync import Sync
 import argparse
 import os
@@ -27,7 +28,8 @@ def main():
 
     parser_retry = subparsers.add_parser("retry", help="重试")
     parser_retry.add_argument("--job", type=str, help="启动作业名称")
-    parser_retry.add_argument("--type", type=str, help="重试的类型：import 或者 export , 默认 import", default="import")
+    parser_retry.add_argument("--type", type=str, help="重试的类型,目前支持如下值: [import export] , 默认 import", default="import")
+    parser_retry.add_argument("--content", type=str, help="重试的内容,目前支持如下值:  [files,partition_name] , 默认 files, 即所有失败的文件，partition_name 需要你传入想要重试的partition name ", default="files")
     parser_retry.add_argument("--env", type=str, help="配置文件地址", default=".env")
 
     parser_va = subparsers.add_parser("validation", help="验证")
@@ -38,7 +40,7 @@ def main():
         env_path = args.env
         job_name = args.job
         conf.load_env(env_path)
-        table_name_str = os.getenv("TABLE_NAMES")
+        table_name_str = os.getenv("TABLE_NAME")
         table_names = table_name_str.split(",")
         for table_name in table_names:
             exporter.run(job_name, table_name)
@@ -57,8 +59,18 @@ def main():
     elif args.command == "retry":
         env_path = args.env
         job_name = args.job
+        retype = args.type
+        content = args.content
         conf.load_env(env_path)
-        importer.retry_failed(job_name)
+        table_name_str = os.getenv("TABLE_NAME")
+        redo = RetryFactory(job_name)
+        if retype == "import":
+            if content == "files":
+                redo.run(RetryAction.IMPORT_TASK)
+            else:
+                redo.run(RetryAction.IMPORT_PARTITIONS, partition_name = content)
+        else:
+            exporter.run(job_name, table_name_str, partition_name=content)
 
     elif args.command == "validation":
         env_path = args.env
