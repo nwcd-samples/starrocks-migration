@@ -76,6 +76,7 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
     # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
     # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
     path = dest + f"{job_name}/{db_name}/{table_name}/{pt_name}/" if dest.endswith("/") else f"{dest}/{job_name}/{db_name}/{table_name}/{pt_name}/"
+    s3_endpoint = os.getenv("S3_INTERFACE_ENDPOINT")
 
     if ak != "" and sk != "":
         command = f"""
@@ -91,6 +92,7 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
             (
                 "aws.s3.access_key" = "{ak}",
                 "aws.s3.secret_key" = "{sk}",
+                "aws.s3.endpoint" = "https://bucket.{s3_endpoint}",
                 "aws.s3.region" = "{aws_region}"
             )
             """
@@ -106,6 +108,7 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
             )
             WITH BROKER
             (
+                "aws.s3.endpoint" = "https://bucket.{s3_endpoint}",
                 "aws.s3.region" = "{aws_region}"
             )
             """
@@ -200,7 +203,7 @@ def run(job_name:str, table_name:str, partition_name = ""):
         partitions = get_tasks(table_name)
         
     task_deque = deque(partitions)
-
+    logger.info(f"[exporter][{job_name}]===>BEGION RUN {table_name}!")
     while len(task_deque) > 0:
         now = datetime.now()
         begin_timestr = now.strftime("%Y-%m-%d %H:%M:%S")

@@ -90,6 +90,6 @@ def run():
         conn.close()
         dest.close()
 
-    logger.error(f"not match partitions {notmatch}")
+    logger.error(f"not match partitions {','.join(notmatch)}")
     logger.info("donepr!!!")
             
