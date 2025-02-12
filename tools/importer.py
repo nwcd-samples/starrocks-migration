@@ -119,6 +119,7 @@ class IWorkerThread(threading.Thread):
                     time.sleep(1)
                     # 格式为 s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
                     # s3://tx-au-mock-data/sunexf/test2/sunim/data_point_val/p20231105/__starrocks_export_tmp_e8134bc5-b224-11ef-b192-0ac76da15273/data_e8134bc5-b224-11ef-b192-0ac76da15273_0_1_0_0.csv
+                    # s3://eu-test-starrocks/eu-test-starrocks-2025021203/sungrow/fact_organization_kpi_year/p2018/
                     parts = task_name.split("/")
                     table_name=parts[6]
                     file_path = task_name
@@ -160,7 +161,6 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
     ukey = str(uuid_v4)[-4:-1]
     label = f"{table_name}_{current_time}_{ukey}"
 
-    
     if ak=="" and sk=="":
         command = f"""
                 LOAD LABEL {db_name}.{label}
@@ -172,7 +172,8 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
                 WITH BROKER
                 PROPERTIES
                 (
-                    "timeout" = "3600"
+                    "timeout" = "3600",
+                    "aws.s3.region" = "{aws_region}"
                 );
                 """
     else:
@@ -188,7 +189,8 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
                 (
                     "timeout" = "3600",
                     "aws.s3.access_key" = "{ak}",
-                    "aws.s3.secret_key" = "{sk}"
+                    "aws.s3.secret_key" = "{sk}",
+                    "aws.s3.region" = "{aws_region}"
         
                 );
                 """  
