@@ -170,10 +170,12 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
                     COLUMNS TERMINATED BY "|"
                 )
                 WITH BROKER
+                (
+                    "aws.s3.region" = "{aws_region}"
+                )
                 PROPERTIES
                 (
-                    "timeout" = "3600",
-                    "aws.s3.region" = "{aws_region}"
+                    "timeout" = "3600"
                 );
                 """
     else:
@@ -185,13 +187,14 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
                     COLUMNS TERMINATED BY "|"
                 )
                 WITH BROKER
-                PROPERTIES
                 (
-                    "timeout" = "3600",
                     "aws.s3.access_key" = "{ak}",
                     "aws.s3.secret_key" = "{sk}",
                     "aws.s3.region" = "{aws_region}"
-        
+                )
+                PROPERTIES
+                (
+                    "timeout" = "3600"
                 );
                 """  
 
