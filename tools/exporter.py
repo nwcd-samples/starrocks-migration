@@ -85,7 +85,7 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
             TO "{path}" 
             PROPERTIES
             (
-                "column_separator"="|",
+                "column_separator"="|#",
                 "timeout" = "3600"
             )
             WITH BROKER
@@ -103,7 +103,7 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
             TO "{path}" 
             PROPERTIES
             (
-                "column_separator"="|",
+                "column_separator"="|#",
                 "timeout" = "3600"
             )
             WITH BROKER
