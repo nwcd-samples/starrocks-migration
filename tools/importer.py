@@ -78,21 +78,28 @@ class IWorkerThread(threading.Thread):
                 )
 
                 messages = response["Messages"]
-                logger.info(f"[importer][{self.job_name}]===>No task need to do")
+  
 
                 task_info = list()
                 for msg in messages:
                     body_str = msg["Body"]
                     body = json.loads(body_str)
                     receipt_handle = msg["ReceiptHandle"]
-                    sqs.delete_message(
-                        QueueUrl=queue_url,
-                        ReceiptHandle=receipt_handle
-                    )
-                    task_info.append(body)
+                    task_name=body['task_name']
+                    parts = task_name.split("/")
+                    job_name=parts[4]
+                    if job_name == self.job_name or task_name == "ALL TASK DONE":
+                        sqs.delete_message(
+                            QueueUrl=queue_url,
+                            ReceiptHandle=receipt_handle
+                        )
+                        task_info.append(body)
 
                 now = datetime.now()
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+                if len(task_info)<=0:
+                    logger.info(f"[importer][{self.job_name}]===>No task need to do")
+
                 for body in task_info:
                     task_name = body['task_name']
                     if task_name == "ALL TASK DONE":
