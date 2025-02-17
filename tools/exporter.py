@@ -130,10 +130,8 @@ def run(job_name:str, table_name:str, partition_name = ""):
     logger.info(f"[exporter][{job_name}]===>BEGION RUN {table_name}!")
     partitions = get_tasks(table_name)
     logger.info(partitions)
-    sparkrun(job_name,table_name,partitions)
+    sparkrun(job_name,table_name,partitions,logger)
         
-
-
-    time.sleep(60)
+    time.sleep(30)
     send_task_done_notification()
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")

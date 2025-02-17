@@ -1,9 +1,6 @@
 from pyspark.sql import SparkSession
 import os
 from random import randint
-from .log import get_logger
-
-logger = get_logger("exporter")
 
 def get_data_source(cluster_type="source"):
     host_str =os.getenv("SOURCE_HOST") if cluster_type == "source" else os.getenv("TARGET_HOST")
@@ -15,16 +12,13 @@ def get_data_source(cluster_type="source"):
     else:
         return host_ip,os.getenv("TARGET_PORT"),os.getenv("TARGET_USER"),os.getenv("TARGET_PWD"),os.getenv("TARGET_DB_NAME")
 
-def run(job_name:str,table_name:str, partitions:list):
-    spark = SparkSession.builder.appName(f"StarRocksMigration{table_name}").getOrCreate()
+def run(job_name:str,table_name:str, partitions:list, logger):
+    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}").getOrCreate()
     for partition in partitions:
         pt_name = partition["name"]
         if partition["ptype"] == "list":
             ptv = partition['start']
-            if partition["type"] == "number":
-                filter_str = f"{partition['key']}={ptv}"
-            else:
-                filter_str = f"{partition['key']}='{ptv}'"
+            filter_str = f"{partition['key']}={ptv}"
         else:
             ptv = partition['start']
             ptv2 = partition['end']
@@ -32,11 +26,13 @@ def run(job_name:str,table_name:str, partitions:list):
                 filter_str = f"{partition['key']}>={ptv} and{partition['key']} < {ptv2}"
             else:
                filter_str = f"{partition['key']}>='{ptv}' and{partition['key']} < '{ptv2}'"
+        
+        logger.info(f"bgin run {table_name}==>{pt_name}")
 
-        runp(spark, job_name, table_name,filter_str,pt_name)
+        runp(spark, job_name, table_name,filter_str,pt_name,logger)
     spark.stop()
 
-def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name:str):
+def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name:str, logger):
     # 创建 SparkSession
     # 使用 StarRocks 数据源读取数据
     host, port,user,pwd,db_name = get_data_source()
@@ -51,11 +47,7 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
         .option("starrocks.filter.query", filter_str) \
         .load()
 
-    # 显示数据
-    starrocksSparkDF.show(10)
-
-    # 停止 SparkSession
-    if storage.beginwith("s3://"):
+    if storage.startswith("s3://"):
         storage = storage.replace("s3://", "s3a://")
 
     # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv

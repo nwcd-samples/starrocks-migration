@@ -28,6 +28,8 @@ def lambda_handler(event, context):
         for key in keys:
             if not key.endswith(".csv"):
                 continue
+            if key.find("_temporary") >=0:
+                continue
             # 格式为 bucket_name/前缀路径(配置文件中配置)/task_name/db_name/table_name/partition_name/file_name.csv
             ukey = urllib.parse.unquote_plus(key, encoding='utf-8')
             task_name = "s3://" + ukey

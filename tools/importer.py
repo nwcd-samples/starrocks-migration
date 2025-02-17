@@ -86,6 +86,8 @@ class IWorkerThread(threading.Thread):
                     body = json.loads(body_str)
                     receipt_handle = msg["ReceiptHandle"]
                     task_name=body['task_name']
+        
+
                     parts = task_name.split("/")
                     job_name=parts[4]
                     if job_name == self.job_name or task_name == "ALL TASK DONE":
@@ -94,6 +96,9 @@ class IWorkerThread(threading.Thread):
                             ReceiptHandle=receipt_handle
                         )
                         task_info.append(body)
+                
+                    if task_name == "ALL TASK DONE":
+                        return
 
                 now = datetime.now()
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -102,8 +107,7 @@ class IWorkerThread(threading.Thread):
 
                 for body in task_info:
                     task_name = body['task_name']
-                    if task_name == "ALL TASK DONE":
-                        return
+
                     res = dynamodb.update_item(
                         TableName=recorder,
                         Key={
@@ -339,6 +343,33 @@ def get_task():
     })
     print(response)
 
+def clear():
+    AWS_REGION = os.getenv("AWS_REGION")
+
+    queue_url = os.getenv("TASK_QUEUE")
+    sqs = boto3.client('sqs', region_name=AWS_REGION)
+    while True:
+        response = sqs.receive_message(
+                    QueueUrl=queue_url,
+                    VisibilityTimeout=10
+                )
+
+        if "Messages" not in response:
+            break
+
+        messages = response["Messages"]
+        if len(messages) == 0:
+            break
+
+        for msg in messages:
+            body_str = msg["Body"]
+            print(body_str)
+            receipt_handle = msg["ReceiptHandle"]
+            ok = sqs.delete_message(
+                        QueueUrl=queue_url,
+                        ReceiptHandle=receipt_handle
+                    )  
+            print(ok)    
 
 def run(job_name:str, incremental=True):
     CONCURRENCY=int(os.getenv("IMPORT_CONCURRENCY"))
