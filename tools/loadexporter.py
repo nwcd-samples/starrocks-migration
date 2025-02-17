@@ -4,27 +4,19 @@ from collections import deque
 import json
 import os
 import boto3
-import sparkexporter
 from .mysql import get_conn
 from .log import get_logger
 from .helper import send_task_done_notification
 
 
-
 logger = get_logger("exporter")
 
-def pick_range_key(partition_range_str):
+def pick_key(partition_range_str):
     # 首先，根据"keys: ["分割字符串，然后取第二部分
     parts = partition_range_str.split("keys: [")
     key1_str = parts[1].split("];")[0]
     key2_str = parts[2].split("];")[0]
     return key1_str, key2_str
-
-def pick_list_key(partition_str:str):
-    index1 = partition_str.find("((")
-    index2 = partition_str.find("))")
-    return partition_str[index1+2:index2]
-
 
 
 def get_summit_task(conn, db_name):
@@ -144,13 +136,11 @@ def export_partition(conn, job_name:str, db_name:str, table_name:str, dest: str,
 def get_tasks(table_name:str)->list:
     # filter method可以有如下类型：EACH,STARTWITH,ENDWITH,RANGE
     task_filter = os.getenv("TASK_FILTER", "")
-    select_p = None
-    begin = None
-    end = None
     if task_filter:
         if task_filter.startswith("EACH("):
             parts = task_filter[len("EACH("):-1].split(",")
-            select_p = {item:True for item in parts}
+            partitions = [{"name": pt_name} for pt_name in parts]
+            return partitions
         elif task_filter.startswith("RANGE("):
             parts = task_filter[len("RANGE("):-1].split(",")
             begin = parts[0]
@@ -166,7 +156,7 @@ def get_tasks(table_name:str)->list:
 
     conn = get_conn()
 
-    cmd_partition = f"SHOW PARTITIONS FROM {table_name} ORDER BY PartitionName"
+    cmd_partition = f"SHOW PARTITIONS FROM {table_name}"
     partitions = list()
     with conn.cursor() as cursor:
         sql = str(cmd_partition)
@@ -181,48 +171,12 @@ def get_tasks(table_name:str)->list:
             if end:
                 if row["PartitionName"] >= end:
                     break
-
-            if (select_p and  row["PartitionName"] in select_p) or not select_p:
-                ptype ="range" if "Range" in row else "list"
-                if "Range" in row:
-                    valuestr = row["Range"]
-                    datatype = "str"
-                    if valuestr.find("INT") > 0:
-                        datatype = "number"
-
-                    start, end = pick_range_key(valuestr)
-                    partitions.append(
-                        {
-                            "name": row["PartitionName"],
-                            "key": row["PartitionKey"],
-                            "ptype": ptype,
-                            "start": start,
-                            "end": end,
-                            "type": datatype,
-                            "ptype":"range"
-                        }
-                    )
-                else:
-                    valuestr = row["List"]
-                    datatype = "str"
-                    if valuestr.find("INT") > 0:
-                        datatype = "number"
-
-                    start= pick_list_key(valuestr)
-                    partitions.append(
-                        {
-                            "name": row["PartitionName"],
-                            "key": row["PartitionKey"],
-                            "ptype": ptype,
-                            "start": start,
-                            "end": "",
-                            "type": datatype,
-                            "ptype": "list"
-                        }
-                    )
-
-
-                
+            
+            partitions.append(
+                {
+                    "name": row["PartitionName"]
+                }
+            )
     conn.close()
     return partitions
 
@@ -235,15 +189,58 @@ def run(job_name:str, table_name:str, partition_name = ""):
     AWS_REGION = os.getenv("AWS_REGION")
 
     dest = STORAGES[0]
+    if AK == "" or SK == "":
+        dest = dest.replace("s3:", "s3a:")
 
     CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
 
     # 向队列中添加任务
-    partitions = get_tasks(table_name)
-    for partition in partitions:
-        sparkexporter.run(table_name)
+    if partition_name:
+        partitions = [ {
+            "name": partition_name
+        }]
+    else:
+        partitions = get_tasks(table_name)
         
+    task_deque = deque(partitions)
     logger.info(f"[exporter][{job_name}]===>BEGION RUN {table_name}!")
+    while len(task_deque) > 0:
+        now = datetime.now()
+        begin_timestr = now.strftime("%Y-%m-%d %H:%M:%S")
+        counter = 0
+        conn = get_conn()
+        try:
+            while counter < CONCURRENCY and len(task_deque) > 0:
+                task = task_deque.popleft()
+                pt_name = task["name"]
+                counter += 1
+                export_partition(conn, job_name, DB_NAME, table_name, dest,
+                                pt_name, AWS_REGION, AK, SK)
+
+            
+            query_ids = get_summit_task(conn, DB_NAME)
+            time.sleep(5)
+            running = True
+            while running:
+                running_jobs_count, status = check_task(conn, DB_NAME, query_ids)
+                if running_jobs_count == 0:
+                    running = False
+                    for key in status:
+                        job = status[key]["summary"]
+                        if status[key]["state"] == "FINISHED":
+                            logger.info(f"[exporter][{job_name}]===>Succeed in exporting job {job}")
+                        else:
+                            error_msg = status[key]["msg"]
+                            logger.error(f"[exporter][{job_name}]===>Failed to finish job {job} due to {error_msg}")
+                else:
+                    time.sleep(5)
+            time.sleep(2)
+        except Exception as ex:
+            logger.error(f"[exporter][{job_name}]===>Failed to finish job {job} due to {ex}, reconnecting...")
+            conn.close()
+            time.sleep(60)
+            conn = get_conn()
+
 
     time.sleep(60)
     send_task_done_notification()
