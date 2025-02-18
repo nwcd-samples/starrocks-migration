@@ -76,6 +76,9 @@ class IWorkerThread(threading.Thread):
                     QueueUrl=queue_url,
                     VisibilityTimeout=600
                 )
+                if "Messages" not in response:
+                    time.sleep(2)
+                    continue
 
                 messages = response["Messages"]
   
@@ -84,16 +87,16 @@ class IWorkerThread(threading.Thread):
                 for msg in messages:
                     body_str = msg["Body"]
                     body = json.loads(body_str)
-                    receipt_handle = msg["ReceiptHandle"]
                     task_name=body['task_name']
-        
 
-                    parts = task_name.split("/")
-                    job_name=parts[4]
                     if task_name == "ALL TASK DONE":
-                        job_name ==  body['status']
-
-                    if job_name == self.job_name:
+                        item_job_name =  body['status']
+                    else:
+                        parts = task_name.split("/")
+                        item_job_name=parts[4]
+                    
+                    receipt_handle = msg["ReceiptHandle"]
+                    if item_job_name == self.job_name:
                         sqs.delete_message(
                             QueueUrl=queue_url,
                             ReceiptHandle=receipt_handle
@@ -108,7 +111,7 @@ class IWorkerThread(threading.Thread):
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
                 for body in task_info:
-                    task_name = body['task_name']
+                    utask_name = body['task_name']
 
                     res = dynamodb.update_item(
                         TableName=recorder,
@@ -133,17 +136,17 @@ class IWorkerThread(threading.Thread):
                     # 格式为 s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
                     # s3://tx-au-mock-data/sunexf/test2/sunim/data_point_val/p20231105/__starrocks_export_tmp_e8134bc5-b224-11ef-b192-0ac76da15273/data_e8134bc5-b224-11ef-b192-0ac76da15273_0_1_0_0.csv
                     # s3://eu-test-starrocks/eu-test-starrocks-2025021203/sungrow/fact_organization_kpi_year/p2018/
-                    parts = task_name.split("/")
+                    parts = utask_name.split("/")
                     table_name=parts[6]
-                    file_path = task_name
+                    file_path = utask_name
                     if AK =="" or SK =="":
-                        file_path = task_name.replace("s3://", "s3a://")
+                        file_path = utask_name.replace("s3://", "s3a://")
                     is_ok, msg = import_task(self.job_name, DB_NAME, table_name, file_path, AWS_REGION, AK, SK)
                     status = FILE_STATUS_IMPORTED_SUCESS if is_ok else FILE_STATUS_IMPORTED_FAILED
                     dynamodb.update_item(
                         TableName=recorder,
                         Key={
-                            'task_name': {'S': task_name}
+                            'task_name': {'S': utask_name}
                         },
                         AttributeUpdates={
                             'status': {
@@ -160,8 +163,9 @@ class IWorkerThread(threading.Thread):
                     )
                     sleep_time = random.uniform(0.01, 1.0)
                     time.sleep(sleep_time)
-
+                time.sleep(1)
             except Exception as ex:
+                logger.error(f"[importer]===>error {ex}")
                 time.sleep(10)
 
 
@@ -343,35 +347,7 @@ def get_task():
      Key={
         'task_name': {'S': 'test'}
     })
-    print(response)
-
-def clear():
-    AWS_REGION = os.getenv("AWS_REGION")
-
-    queue_url = os.getenv("TASK_QUEUE")
-    sqs = boto3.client('sqs', region_name=AWS_REGION)
-    while True:
-        response = sqs.receive_message(
-                    QueueUrl=queue_url,
-                    VisibilityTimeout=10
-                )
-
-        if "Messages" not in response:
-            break
-
-        messages = response["Messages"]
-        if len(messages) == 0:
-            break
-
-        for msg in messages:
-            body_str = msg["Body"]
-            print(body_str)
-            receipt_handle = msg["ReceiptHandle"]
-            ok = sqs.delete_message(
-                        QueueUrl=queue_url,
-                        ReceiptHandle=receipt_handle
-                    )  
-            print(ok)    
+    print(response)  
 
 def run(job_name:str, incremental=True):
     CONCURRENCY=int(os.getenv("IMPORT_CONCURRENCY"))

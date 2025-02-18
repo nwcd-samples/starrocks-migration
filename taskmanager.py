@@ -2,11 +2,42 @@
 from tools import conf
 from tools import exporter, importer, validation
 from tools.retry import RetryFactory, RetryAction
+from tools.helper import send_task_done_notification
 from tools.sync import Sync
 import argparse
 import os
+import time
+import boto3
 
 
+def clear():
+    AWS_REGION = os.getenv("AWS_REGION")
+
+    queue_url = os.getenv("TASK_QUEUE")
+    sqs = boto3.client('sqs', region_name=AWS_REGION)
+    while True:
+        response = sqs.receive_message(
+                    QueueUrl=queue_url,
+                    VisibilityTimeout=10
+                )
+
+        if "Messages" not in response:
+            break
+
+        messages = response["Messages"]
+        if len(messages) == 0:
+           break
+
+        for msg in messages:
+            body_str = msg["Body"]
+            print(body_str)
+            receipt_handle = msg["ReceiptHandle"]
+            ok = sqs.delete_message(
+                        QueueUrl=queue_url,
+                        ReceiptHandle=receipt_handle
+                    )  
+            print(ok)
+        time.sleep(2)
 
 def main():
     # 创建一个解析器
@@ -35,6 +66,9 @@ def main():
     parser_va = subparsers.add_parser("validation", help="验证")
     parser_va.add_argument("--env", type=str, help="配置文件地址", default=".env")
 
+    parser_sqs = subparsers.add_parser("clear", help="情况SQS")
+    parser_sqs.add_argument("--env", type=str, help="配置文件地址", default=".env")
+
     args = parser.parse_args()
     if args.command == "export":
         env_path = args.env
@@ -44,6 +78,8 @@ def main():
         table_names = table_name_str.split(",")
         for table_name in table_names:
             exporter.run(job_name, table_name)
+        time.sleep(30)
+        send_task_done_notification(job_name)
     elif args.command == "import":
         env_path = args.env
         job_name = args.job
@@ -76,6 +112,10 @@ def main():
         env_path = args.env
         conf.load_env(env_path)
         validation.run()
+    elif args.command == "clear":
+        env_path = args.env
+        conf.load_env(env_path)
+        clear()
     else:
         parser.print_help()
 

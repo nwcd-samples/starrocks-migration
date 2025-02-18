@@ -14,10 +14,17 @@ def get_data_source(cluster_type="source"):
         return host_ip,os.getenv("TARGET_PORT"),os.getenv("TARGET_USER"),os.getenv("TARGET_PWD"),os.getenv("TARGET_DB_NAME")
 
 def run(job_name:str,table_name:str, partitions:list, logger):
+    CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
     dependency_jars=os.getenv("DEPENDENCY_JARS")
-    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}").config("spark.jars", dependency_jars).getOrCreate()
+
     for partition in partitions:
         pt_name = partition["name"]
+        spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}{pt_name}") \
+        .config("spark.jars", dependency_jars) \
+        .config("spark.scheduler.mode", "FIFO") \
+        .config("spark.scheduler.allocation.maxConcurrent", f"{CONCURRENCY}") \
+        .getOrCreate()
+        
         if partition["ptype"] == "list":
             ptv = partition['start']
             filter_str = f"{partition['key']}={ptv}"
@@ -27,22 +34,25 @@ def run(job_name:str,table_name:str, partitions:list, logger):
             if partition["type"] == "number":
                 filter_str = f"{partition['key']}>={ptv} and {partition['key']} < {ptv2}"
             else:
-               filter_str = f"{partition['key']}>='{ptv}' and {partition['key']} < '{ptv2}'"
-        
-        logger.info(f"bgin run {table_name}==>{pt_name}")
+                filter_str = f"{partition['key']}>='{ptv}' and {partition['key']} < '{ptv2}'"
+        logger.info(f"[exporter][{job_name}]===>BEGION RUN {table_name}==>{pt_name}!")
         try:
             runp(spark, job_name, table_name,filter_str,pt_name,logger)
-            time.sleep(randint(2,10))
+            time.sleep(2)
+            logger.info(f"[exporter][{job_name}]===>SUCCESS RUN {table_name}==>{pt_name}!")
         except Exception as ex:
-            logger.error(f"failed to run {table_name}==>{pt_name} due to {ex}")
-
-    spark.stop()
+            logger.error(f"[exporter][{job_name}]===>FAILED TO RUN {table_name}==>{pt_name} due to {ex}")
+        finally:
+            spark.catalog.clearCache()
+    
+        spark.stop()
 
 def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name:str, logger):
     # 创建 SparkSession
     # 使用 StarRocks 数据源读取数据
     host, port,user,pwd,db_name = get_data_source()
     storage = os.getenv("STORAGES")
+    max_row_count = int(os.getenv("PER_FILE_MAX_ROW_COUNT"))
     logger.info(f"begin partition {pt_name} with {filter_str}")
     
     starrocksSparkDF = spark.read.format("starrocks") \
@@ -52,6 +62,7 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
         .option("starrocks.user", f"{user}") \
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.filter.query", filter_str) \
+        .option("maxRecordsPerFile", max_row_count) \
         .load()
 
     if storage.startswith("s3://"):
@@ -66,5 +77,7 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
             .format("csv") \
             .mode("overwrite") \
             .save(s3_path)
+    # 强制执行
+    starrocksSparkDF.show(1)
 
     

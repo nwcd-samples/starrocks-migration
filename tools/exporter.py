@@ -7,7 +7,6 @@ import boto3
 from .sparkexporter import run as sparkrun
 from .mysql import get_conn
 from .log import get_logger
-from .helper import send_task_done_notification
 
 
 
@@ -121,14 +120,11 @@ def run(job_name:str, table_name:str, partition_name = ""):
     AWS_REGION = os.getenv("AWS_REGION")
 
     dest = STORAGES[0]
-
-    CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
-
+    logger.info("")
+    logger.info("")
     logger.info(f"[exporter][{job_name}]===>BEGION RUN {table_name}!")
     partitions = get_tasks(table_name)
     logger.info(partitions)
     sparkrun(job_name,table_name,partitions,logger)
-        
-    time.sleep(30)
-    send_task_done_notification(job_name)
+    
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
