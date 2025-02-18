@@ -62,7 +62,6 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
         .option("starrocks.user", f"{user}") \
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.filter.query", filter_str) \
-        .option("maxRecordsPerFile", max_row_count) \
         .load()
 
     if storage.startswith("s3://"):
@@ -74,6 +73,7 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
     starrocksSparkDF.write \
             .option("header", "false") \
             .option("delimiter", "|#") \
+            .option("maxRecordsPerFile", max_row_count) \
             .format("csv") \
             .mode("overwrite") \
             .save(s3_path)
