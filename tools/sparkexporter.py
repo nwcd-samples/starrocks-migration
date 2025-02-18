@@ -14,7 +14,8 @@ def get_data_source(cluster_type="source"):
         return host_ip,os.getenv("TARGET_PORT"),os.getenv("TARGET_USER"),os.getenv("TARGET_PWD"),os.getenv("TARGET_DB_NAME")
 
 def run(job_name:str,table_name:str, partitions:list, logger):
-    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}").getOrCreate()
+    dependency_jars=os.getenv("DEPENDENCY_JARS")
+    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}").config("spark.jars", dependency_jars).getOrCreate()
     for partition in partitions:
         pt_name = partition["name"]
         if partition["ptype"] == "list":
@@ -43,6 +44,7 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
     host, port,user,pwd,db_name = get_data_source()
     storage = os.getenv("STORAGES")
     logger.info(f"begin partition {pt_name} with {filter_str}")
+    
     starrocksSparkDF = spark.read.format("starrocks") \
         .option("starrocks.table.identifier", f"{db_name}.{table_name}") \
         .option("starrocks.fe.http.url", f"{host}:8030") \

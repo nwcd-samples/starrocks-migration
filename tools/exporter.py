@@ -130,5 +130,5 @@ def run(job_name:str, table_name:str, partition_name = ""):
     sparkrun(job_name,table_name,partitions,logger)
         
     time.sleep(30)
-    send_task_done_notification()
+    send_task_done_notification(job_name)
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
