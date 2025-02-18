@@ -2,12 +2,12 @@ import os
 import boto3
 import json
 
-def send_task_done_notification():
+def send_task_done_notification(job_name:str):
     aws_region = os.getenv("AWS_REGION")
     k_info = {
         "task_name": "ALL TASK DONE",
         "update_time": "",
-        "status": ""
+        "status": job_name
     }
 
     # 告诉immporter ,导出任务结束了

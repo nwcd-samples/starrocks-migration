@@ -69,21 +69,19 @@ def get_tasks(table_name:str)->list:
                     break
 
             if (select_p and  row["PartitionName"] in select_p) or not select_p:
-                ptype ="range" if "Range" in row else "list"
                 if "Range" in row:
                     valuestr = row["Range"]
                     datatype = "str"
                     if valuestr.find("INT") > 0:
                         datatype = "number"
 
-                    start, end = pick_range_key(valuestr)
+                    p_start, p_end = pick_range_key(valuestr)
                     partitions.append(
                         {
                             "name": row["PartitionName"],
                             "key": row["PartitionKey"],
-                            "ptype": ptype,
-                            "start": start,
-                            "end": end,
+                            "start": p_start,
+                            "end": p_end,
                             "type": datatype,
                             "ptype":"range"
                         }
@@ -94,13 +92,12 @@ def get_tasks(table_name:str)->list:
                     if valuestr.find("INT") > 0:
                         datatype = "number"
 
-                    start= pick_list_key(valuestr)
+                    p_start= pick_list_key(valuestr)
                     partitions.append(
                         {
                             "name": row["PartitionName"],
                             "key": row["PartitionKey"],
-                            "ptype": ptype,
-                            "start": start,
+                            "start": p_start,
                             "end": "",
                             "type": datatype,
                             "ptype": "list"

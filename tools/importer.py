@@ -90,20 +90,22 @@ class IWorkerThread(threading.Thread):
 
                     parts = task_name.split("/")
                     job_name=parts[4]
-                    if job_name == self.job_name or task_name == "ALL TASK DONE":
+                    if task_name == "ALL TASK DONE":
+                        job_name ==  body['status']
+
+                    if job_name == self.job_name:
                         sqs.delete_message(
                             QueueUrl=queue_url,
                             ReceiptHandle=receipt_handle
                         )
-                        task_info.append(body)
-                
-                    if task_name == "ALL TASK DONE":
-                        return
+                        
+                        if task_name == "ALL TASK DONE":
+                            logger.info(f"[importer][{self.job_name}]===>ALL TASK DONE !!!")
+                        else:
+                            task_info.append(body)
 
                 now = datetime.now()
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                if len(task_info)<=0:
-                    logger.info(f"[importer][{self.job_name}]===>No task need to do")
 
                 for body in task_info:
                     task_name = body['task_name']

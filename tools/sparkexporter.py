@@ -1,6 +1,7 @@
 from pyspark.sql import SparkSession
 import os
 from random import randint
+import time
 
 def get_data_source(cluster_type="source"):
     host_str =os.getenv("SOURCE_HOST") if cluster_type == "source" else os.getenv("TARGET_HOST")
@@ -23,13 +24,17 @@ def run(job_name:str,table_name:str, partitions:list, logger):
             ptv = partition['start']
             ptv2 = partition['end']
             if partition["type"] == "number":
-                filter_str = f"{partition['key']}>={ptv} and{partition['key']} < {ptv2}"
+                filter_str = f"{partition['key']}>={ptv} and {partition['key']} < {ptv2}"
             else:
-               filter_str = f"{partition['key']}>='{ptv}' and{partition['key']} < '{ptv2}'"
+               filter_str = f"{partition['key']}>='{ptv}' and {partition['key']} < '{ptv2}'"
         
         logger.info(f"bgin run {table_name}==>{pt_name}")
+        try:
+            runp(spark, job_name, table_name,filter_str,pt_name,logger)
+            time.sleep(randint(2,10))
+        except Exception as ex:
+            logger.error(f"failed to run {table_name}==>{pt_name} due to {ex}")
 
-        runp(spark, job_name, table_name,filter_str,pt_name,logger)
     spark.stop()
 
 def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name:str, logger):
