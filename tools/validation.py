@@ -1,25 +1,35 @@
 import os
 from .mysql import get_conn
 from .log import get_logger
+from .helper import pick_list_key, pick_range_key
 
 
+def get_tasks(table_name:str)->list:
+    # filter method可以有如下类型：EACH,STARTWITH,ENDWITH,RANGE
+    task_filter = os.getenv("TASK_FILTER", "")
+    select_p = None
+    begin = None
+    end = None
+    if task_filter:
+        if task_filter.startswith("EACH("):
+            parts = task_filter[len("EACH("):-1].split(",")
+            select_p = {item:True for item in parts}
+        elif task_filter.startswith("RANGE("):
+            parts = task_filter[len("RANGE("):-1].split(",")
+            begin = parts[0]
+            end = parts[-1]
+        elif task_filter.startswith("STARTWITH("):
+            parts = task_filter[len("STARTWITH("):-1].split(",")
+            begin = parts[0]
+            end = ""
+        elif task_filter.startswith("ENDWITH("):
+            parts = task_filter[len("ENDWITH("):-1].split(",")
+            begin = ""
+            end = parts[-1]
 
-def pick_key(partition_range_str):
-    # 首先，根据"keys: ["分割字符串，然后取第二部分
-    parts = partition_range_str.split("keys: [")
-    key1_str = parts[1].split("];")[0]
-    key2_str = parts[2].split("];")[0]
-    return key1_str, key2_str
+    conn = get_conn()
 
-def get_tasks(conn, table_name:str)->list:
-    # TASK_FILTER = os.getenv("TASK_FILTER", "")
-    # if TASK_FILTER:
-    #     parts = TASK_FILTER.split(",")
-    #     partitions = [{"name": pt_name} for pt_name in parts]
-    #     return partitions
-    
-
-    cmd_partition = f"SHOW PARTITIONS FROM {table_name}"
+    cmd_partition = f"SHOW PARTITIONS FROM {table_name} ORDER BY PartitionName"
     partitions = list()
     with conn.cursor() as cursor:
         sql = str(cmd_partition)
@@ -27,17 +37,55 @@ def get_tasks(conn, table_name:str)->list:
         conn.commit()
         rows = cursor.fetchall()
         for row in rows:
-            begin, end = pick_key(row["Range"])
-            partitions.append(
-                {
-                    "name": row["PartitionName"],
-                    "key": row["PartitionKey"],
-                    "begin": begin,
-                    "end":end
+            if begin:
+                if row["PartitionName"] < begin:
+                    continue
 
-                }
-            )
+            if end:
+                if row["PartitionName"] >= end:
+                    break
+
+            if (select_p and  row["PartitionName"] in select_p) or not select_p:
+                if "Range" in row:
+                    valuestr = row["Range"]
+                    datatype = "str"
+                    if valuestr.find("INT") > 0:
+                        datatype = "number"
+
+                    p_start, p_end = pick_range_key(valuestr)
+                    partitions.append(
+                        {
+                            "name": row["PartitionName"],
+                            "key": row["PartitionKey"],
+                            "start": p_start,
+                            "end": p_end,
+                            "type": datatype,
+                            "ptype":"range"
+                        }
+                    )
+                else:
+                    valuestr = row["List"]
+                    datatype = "str"
+                    if valuestr.find("INT") > 0:
+                        datatype = "number"
+
+                    p_start= pick_list_key(valuestr)
+                    partitions.append(
+                        {
+                            "name": row["PartitionName"],
+                            "key": row["PartitionKey"],
+                            "start": p_start,
+                            "end": "",
+                            "type": datatype,
+                            "ptype": "list"
+                        }
+                    )
+
+
+                
+    conn.close()
     return partitions
+
 
 def run():
     logger = get_logger("validation")
@@ -54,10 +102,8 @@ def run():
         partitions = get_tasks(conn, table_name)
         for partition in partitions:
             name =f"{table_name}_{partition['name']}"
-            key = partition['key']
-            begin =  partition['begin']
-            end =  partition['end']
-            cmd = f"""select "{name}" as name, count(*) as row_count from {table_name} where {key} between "{begin}" and "{end}";"""
+            pt_name={partition['name']}
+            cmd = f"""select "{name}" as name, count(*) as row_count from {table_name} partition({pt_name})"""
 
             source_count = 0
             target_count = 0

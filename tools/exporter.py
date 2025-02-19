@@ -7,24 +7,11 @@ import boto3
 from .sparkexporter import run as sparkrun
 from .mysql import get_conn
 from .log import get_logger
+from .helper import pick_list_key, pick_range_key
 
 
 
 logger = get_logger("exporter")
-
-def pick_range_key(partition_range_str):
-    # 首先，根据"keys: ["分割字符串，然后取第二部分
-    parts = partition_range_str.split("keys: [")
-    key1_str = parts[1].split("];")[0]
-    key2_str = parts[2].split("];")[0]
-    return key1_str, key2_str
-
-def pick_list_key(partition_str:str):
-    index1 = partition_str.find("((")
-    index2 = partition_str.find("))")
-    return partition_str[index1+2:index2]
-
-
 
 def get_tasks(table_name:str)->list:
     # filter method可以有如下类型：EACH,STARTWITH,ENDWITH,RANGE

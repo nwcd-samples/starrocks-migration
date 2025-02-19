@@ -37,7 +37,7 @@ def clear():
                         ReceiptHandle=receipt_handle
                     )  
             print(ok)
-        time.sleep(2)
+        time.sleep(0.1)
 
 def main():
     # 创建一个解析器

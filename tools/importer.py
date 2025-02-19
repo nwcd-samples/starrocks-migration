@@ -68,7 +68,8 @@ class IWorkerThread(threading.Thread):
         dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 
         queue_url = os.getenv("TASK_QUEUE")
-        sqs = boto3.client('sqs', region_name=AWS_REGION)
+        queue_endpoint = os.getenv("TASK_QUEUE_ENDPOINT")
+        sqs = boto3.client('sqs', region_name=AWS_REGION, endpoint_url=f"https://{queue_endpoint}")
 
         while True:
             try:
@@ -81,14 +82,12 @@ class IWorkerThread(threading.Thread):
                     continue
 
                 messages = response["Messages"]
-  
 
                 task_info = list()
                 for msg in messages:
                     body_str = msg["Body"]
                     body = json.loads(body_str)
                     task_name=body['task_name']
-
                     if task_name == "ALL TASK DONE":
                         item_job_name =  body['status']
                     else:
@@ -163,7 +162,7 @@ class IWorkerThread(threading.Thread):
                     )
                     sleep_time = random.uniform(0.01, 1.0)
                     time.sleep(sleep_time)
-                time.sleep(1)
+                time.sleep(0.1)
             except Exception as ex:
                 logger.error(f"[importer]===>error {ex}")
                 time.sleep(10)
@@ -323,7 +322,8 @@ def get_task():
     dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 
     queue_url = os.getenv("TASK_QUEUE")
-    sqs = boto3.client('sqs', region_name=AWS_REGION)
+    queue_endpoint = os.getenv("TASK_QUEUE_ENDPOINT")
+    sqs = boto3.client('sqs', region_name=AWS_REGION, endpoint_url=f"https://{queue_endpoint}")
 
     response = sqs.receive_message(
         QueueUrl=queue_url,

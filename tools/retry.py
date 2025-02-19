@@ -85,7 +85,10 @@ class RetryFactory:
         tb_name = os.getenv("TABLE_NAME")
         storage = STORAGES[-1]
         # 格式为 s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
-        key_prefix_str=f"{storage}/{self.job_name}/{db_name}/{tb_name}/{partition_name}"
+        if storage.endswith("/"):
+            key_prefix_str=f"{storage}{self.job_name}/{db_name}/{tb_name}/{partition_name}"
+        else:
+            key_prefix_str=f"{storage}/{self.job_name}/{db_name}/{tb_name}/{partition_name}"
         filter="IMPORTED FAILED"
         return self._get_records(key_prefix_str, filter)
 
