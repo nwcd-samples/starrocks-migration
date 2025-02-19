@@ -90,8 +90,16 @@ def get_tasks(table_name:str)->list:
 def run():
     logger = get_logger("validation")
     table_name_str = os.getenv("TABLE_NAME")
+    metric_str = os.getenv("TABLE_METRICS")
     table_names = table_name_str.split(",")
-    
+    metrics = metric_str.split(",")
+
+    tablecal = dict()
+    for i in range(0, len(table_names)):
+        metric_items = metrics[i].split("|")
+        tablecal[table_names[i]] = metric_items
+
+
     notmatch = []
 
     for table_name in table_names:
@@ -99,43 +107,58 @@ def run():
         conn = get_conn()
         dest = get_conn(cluster_type="target")
 
-        partitions = get_tasks(conn, table_name)
+        partitions = get_tasks(table_name)
         for partition in partitions:
             name =f"{table_name}_{partition['name']}"
-            pt_name={partition['name']}
-            cmd = f"""select "{name}" as name, count(*) as row_count from {table_name} partition({pt_name})"""
-
-            source_count = 0
-            target_count = 0
-            with conn.cursor() as cursor:
-                cursor.execute(cmd)
-                conn.commit()
-                rows = cursor.fetchall()
-                for row in rows:
-                    pt_name = row["name"]
-                    source_count =row["row_count"]
+            pt_name=partition['name']
+            tb_metric_items = tablecal[table_name]
+            tb_metric_items_str =",".join([f"sum({item}) as {item}" for item in tb_metric_items])
+            cmd = f"""select "{name}" as name,{tb_metric_items_str}, count(*) as row_count from {table_name} partition({pt_name})"""
+            source_values = dict()
+            target_values = dict()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(cmd)
+                    conn.commit()
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        
+                        compare_values = [str(row["row_count"])]
+                        for metric in tb_metric_items:
+                            compare_values.append(str(row[metric]))
+                        source_values[row["name"]] = ",".join(compare_values)
+            except Exception as ex:
+                logger.error(f"SOURCE : {cmd}")
+                logger.error(ex)
+        
             try:
                 with dest.cursor() as cursor:
                     cursor.execute(cmd)
                     dest.commit()
                     rows = cursor.fetchall()
                     for row in rows:
-                        pt_name = row["name"]
-                        target_count=row["row_count"]
+                        compare_values = [str(row["row_count"])]
+                        for metric in tb_metric_items:
+                            compare_values.append(str(row[metric]))
+                        target_values[row["name"]] = ",".join(compare_values)
             except Exception as ex:
-                logger.error(cmd)
+                logger.error(f"TARGET : {cmd}")
                 logger.error(ex)
             
 
-            if source_count != target_count:
-                logger.error(f"{name}==>{source_count} != {target_count}")
-                notmatch.append(partition['name'])
-            else:
-                logger.info(f"{name}==>{source_count} == {target_count}")
+            for key in source_values:
+                if source_values[key] !=target_values[key]:
+                    logger.error(f"NOT MATCH {key}==>{source_values[key] } != {target_values[key]}")
+                    notmatch.append(partition['name'])
+                else:
+                    logger.info(f"MATCH {key}==>{source_values[key] } == {target_values[key]}")
+
+                
 
         conn.close()
         dest.close()
-
-    logger.error(f"not match partitions {','.join(notmatch)}")
-    logger.info("donepr!!!")
+    if len(notmatch) > 0:
+        logger.error(f"NOT MATCH {','.join(notmatch)}")
+    else:
+        logger.info("ALL PARTITION IS IS RIGHT !!!")
             
