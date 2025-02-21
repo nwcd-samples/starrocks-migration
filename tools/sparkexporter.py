@@ -53,31 +53,49 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
     host, port,user,pwd,db_name = get_data_source()
     storage = os.getenv("STORAGES")
     max_row_count = int(os.getenv("PER_FILE_MAX_ROW_COUNT"))
-    logger.info(f"begin partition {pt_name} with {filter_str}")
+
+    
     
     starrocksSparkDF = spark.read.format("starrocks") \
         .option("starrocks.table.identifier", f"{db_name}.{table_name}") \
         .option("starrocks.fe.http.url", f"{host}:8030") \
         .option("starrocks.fe.jdbc.url", f"jdbc:mysql://{host}:{port}") \
         .option("starrocks.user", f"{user}") \
-        .option("starrocks.password", f"{pwd}") \
-        .option("starrocks.filter.query", filter_str) \
-        .load()
+        .option("starrocks.password", f"{pwd}")
+    
+    if pt_name and filter_str:
+        logger.info(f"begin partition {pt_name} with {filter_str}")
+        starrocksSparkDF = starrocksSparkDF.option("starrocks.filter.query", filter_str)
+
+    starrocksSparkDF=starrocksSparkDF.load()
 
     if storage.startswith("s3://"):
         storage = storage.replace("s3://", "s3a://")
 
     # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
     # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
-    s3_path = storage + f"{job_name}/{db_name}/{table_name}/{pt_name}/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/{pt_name}/"
+
+    if pt_name:
+        s3_path = storage + f"{job_name}/{db_name}/{table_name}/{pt_name}/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/{pt_name}/"
+    else:
+        s3_path = storage + f"{job_name}/{db_name}/{table_name}/default/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/default/"
+
     starrocksSparkDF.write \
             .option("header", "false") \
-            .option("delimiter", "|#") \
             .option("maxRecordsPerFile", max_row_count) \
-            .format("csv") \
+            .format("parquet") \
             .mode("overwrite") \
             .save(s3_path)
     # 强制执行
     starrocksSparkDF.show(1)
 
-    
+def runone(job_name:str,table_name:str,logger):
+    CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
+    dependency_jars=os.getenv("DEPENDENCY_JARS")
+    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}") \
+        .config("spark.jars", dependency_jars) \
+        .config("spark.scheduler.mode", "FIFO") \
+        .config("spark.scheduler.allocation.maxConcurrent", f"{CONCURRENCY}") \
+        .getOrCreate()
+
+    runp(spark, job_name, table_name,"","",logger)

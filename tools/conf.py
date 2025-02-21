@@ -16,7 +16,6 @@ def load_env(filename='.env'):
                 # 分割键和值
                 key_value_pair = line.split('=', 1)
                 if len(key_value_pair) == 2:
-                    print(key_value_pair)
                     key, value = key_value_pair
                     key=key.strip()
                     value=value.strip()

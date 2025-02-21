@@ -183,7 +183,6 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
                 (
                     DATA INFILE("{file_path}")
                     INTO TABLE {table_name}
-                    COLUMNS TERMINATED BY "|#"
                 )
                 WITH BROKER
                 (
@@ -200,7 +199,6 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
                 (
                     DATA INFILE("{file_path}")
                     INTO TABLE {table_name}
-                    COLUMNS TERMINATED BY "|#"
                 )
                 WITH BROKER
                 (

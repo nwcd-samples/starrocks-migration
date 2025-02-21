@@ -20,7 +20,6 @@ def clear():
                     QueueUrl=queue_url,
                     VisibilityTimeout=10
                 )
-
         if "Messages" not in response:
             break
 

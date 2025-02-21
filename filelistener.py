@@ -26,7 +26,7 @@ def lambda_handler(event, context):
         dynamodb = boto3.client('dynamodb', region_name=region_name)
         sqs = boto3.client('sqs', region_name=region_name)
         for key in keys:
-            if not key.endswith(".csv"):
+            if not key.endswith(".csv") and not key.endswith(".parquet"):
                 continue
             if key.find("_temporary") >=0:
                 continue
