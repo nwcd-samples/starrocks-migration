@@ -11,6 +11,7 @@ import uuid
 from .mysql import get_conn
 from .log import get_logger
 from .helper import send_task_done_notification
+from .sparkimporter import get_spark, run as sparkrun
 
 
 logger = get_logger("importer")
@@ -53,9 +54,10 @@ class IWorkerThread(threading.Thread):
     """
     增量桶的迁移
     """
-    def __init__(self, job_name):
+    def __init__(self, job_name, index):
         threading.Thread.__init__(self)
         self.job_name = job_name
+        self.index = index
 
     def run(self):
         
@@ -70,6 +72,10 @@ class IWorkerThread(threading.Thread):
         queue_url = os.getenv("TASK_QUEUE")
         queue_endpoint = os.getenv("TASK_QUEUE_ENDPOINT")
         sqs = boto3.client('sqs', region_name=AWS_REGION, endpoint_url=f"https://{queue_endpoint}")
+        spark = None
+        using_spark = bool(os.getenv("SPARK_IMPORT", "True") == "True")
+        if using_spark:
+            spark = get_spark(self.job_name, self.index)
 
         while True:
             try:
@@ -102,7 +108,7 @@ class IWorkerThread(threading.Thread):
                         )
                         
                         if task_name == "ALL TASK DONE":
-                            logger.info(f"[importer][{self.job_name}]===>ALL TASK DONE !!!")
+                           return
                         else:
                             task_info.append(body)
 
@@ -140,7 +146,13 @@ class IWorkerThread(threading.Thread):
                     file_path = utask_name
                     if AK =="" or SK =="":
                         file_path = utask_name.replace("s3://", "s3a://")
-                    is_ok, msg = import_task(self.job_name, DB_NAME, table_name, file_path, AWS_REGION, AK, SK)
+                    
+                    
+                    if using_spark:
+                        logger.warn(file_path)
+                        is_ok, msg = sparkrun(spark, self.job_name,table_name, file_path, logger)
+                    else:
+                        is_ok, msg = import_task(self.job_name, DB_NAME, table_name, file_path, AWS_REGION, AK, SK)
                     status = FILE_STATUS_IMPORTED_SUCESS if is_ok else FILE_STATUS_IMPORTED_FAILED
                     dynamodb.update_item(
                         TableName=recorder,
@@ -166,7 +178,6 @@ class IWorkerThread(threading.Thread):
             except Exception as ex:
                 logger.error(f"[importer]===>error {ex}")
                 time.sleep(10)
-
 
 
 def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="",sk=""):
@@ -249,7 +260,6 @@ def import_task(job_name, db_name,table_name, file_path: str,aws_region:str,ak="
         conn.close()
         logger.error(f"[importer][{job_name}]===>failed to import {file_path} to {table_name} due to {ex}")
         return False, str(ex)
-
 
 
 def parse_s3_path(s3_path):
@@ -369,7 +379,7 @@ def run(job_name:str, incremental=True):
         task_queue.join()
     else:
         for i in range(0, CONCURRENCY):
-            thread = IWorkerThread(job_name)
+            thread = IWorkerThread(job_name, i)
             threads.append(thread)
             thread.start()
 
@@ -377,6 +387,6 @@ def run(job_name:str, incremental=True):
     for thread in threads:
         thread.join()
 
-
+    logger.info(f"[importer][{job_name}]===>ALL TASK DONE !!!")
     logger.info(f"[importer][{job_name}]===>JOB FINISHED")
 
