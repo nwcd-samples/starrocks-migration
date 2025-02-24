@@ -94,7 +94,8 @@ def get_tasks(table_name:str)->list:
                             "start": p_start,
                             "end": p_end,
                             "type": datatype,
-                            "ptype":"range"
+                            "ptype":"range",
+                            "rowcount":row["RowCount"]
                         }
                     )
                 else:
@@ -113,7 +114,8 @@ def get_tasks(table_name:str)->list:
                             "start": p_start,
                             "end": "",
                             "type": datatype,
-                            "ptype": "list"
+                            "ptype": "list",
+                            "rowcount":row["RowCount"]
                         }
                     )
 

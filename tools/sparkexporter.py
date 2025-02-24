@@ -3,6 +3,8 @@ import os
 from random import randint
 import time
 
+MIN_COUNT = 1000
+
 def get_data_source(cluster_type="source"):
     host_str =os.getenv("SOURCE_HOST") if cluster_type == "source" else os.getenv("TARGET_HOST")
     hosts = host_str.split(",")
@@ -16,14 +18,22 @@ def get_data_source(cluster_type="source"):
 def run(job_name:str,table_name:str, partitions:list, logger):
     CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
     dependency_jars=os.getenv("DEPENDENCY_JARS")
+    spark_cache = os.getenv("SPARK_CACHE")
 
-    for partition in partitions:
-        pt_name = partition["name"]
-        spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}{pt_name}") \
+
+    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}") \
         .config("spark.jars", dependency_jars) \
         .config("spark.scheduler.mode", "FIFO") \
+        .config("spark.local.dir", spark_cache) \
         .config("spark.scheduler.allocation.maxConcurrent", f"{CONCURRENCY}") \
         .getOrCreate()
+        
+    for partition in partitions:
+        if partition["rowcount"] == 0:
+            logger.warn(f"[exporter][{job_name}]===>NO DATA IN {table_name}==>{pt_name}!")
+            continue
+
+        pt_name = partition["name"]
         
         if partition["ptype"] == "list":
             ptv = partition['start']
@@ -45,7 +55,7 @@ def run(job_name:str,table_name:str, partitions:list, logger):
         finally:
             spark.catalog.clearCache()
     
-        spark.stop()
+    spark.stop()
 
 def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name:str, logger):
     # 创建 SparkSession
@@ -69,32 +79,36 @@ def runp(spark:SparkSession,job_name:str, table_name:str,filter_str:str, pt_name
 
     starrocksSparkDF=starrocksSparkDF.load()
 
-    if storage.startswith("s3://"):
-        storage = storage.replace("s3://", "s3a://")
-
-    # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
-    # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
-
-    if pt_name:
-        s3_path = storage + f"{job_name}/{db_name}/{table_name}/{pt_name}/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/{pt_name}/"
-    else:
-        s3_path = storage + f"{job_name}/{db_name}/{table_name}/default/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/default/"
-
-    starrocksSparkDF.write \
-            .option("header", "false") \
-            .option("maxRecordsPerFile", max_row_count) \
-            .format("parquet") \
-            .mode("overwrite") \
-            .save(s3_path)
     # 强制执行
-    starrocksSparkDF.show(1)
+    row_count = starrocksSparkDF.count()
+    if row_count > 0:
+        if storage.startswith("s3://"):
+            storage = storage.replace("s3://", "s3a://")
+
+            # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
+            # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
+
+        if pt_name:
+            s3_path = storage + f"{job_name}/{db_name}/{table_name}/{pt_name}/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/{pt_name}/"
+        else:
+            s3_path = storage + f"{job_name}/{db_name}/{table_name}/default/" if storage.endswith("/") else f"{storage}/{job_name}/{db_name}/{table_name}/default/"
+
+        starrocksSparkDF.write \
+                .option("header", "false") \
+                .option("maxRecordsPerFile", max_row_count) \
+                .format("parquet") \
+                .mode("overwrite") \
+                .save(s3_path)
+    
 
 def runone(job_name:str,table_name:str,logger):
     CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
     dependency_jars=os.getenv("DEPENDENCY_JARS")
+    spark_cache = os.getenv("SPARK_CACHE")
     spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}") \
         .config("spark.jars", dependency_jars) \
         .config("spark.scheduler.mode", "FIFO") \
+        .config("spark.local.dir", spark_cache) \
         .config("spark.scheduler.allocation.maxConcurrent", f"{CONCURRENCY}") \
         .getOrCreate()
 
