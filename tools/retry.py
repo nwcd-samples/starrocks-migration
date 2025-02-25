@@ -17,6 +17,7 @@ class RetryAction(Enum):
     IMPORT_PARTITIONS = 1
     EXPORT = 2
     SYNC = 3
+    SHOW = 4
 
 def get_retry_action(desc:str):
     if desc == "import":
@@ -76,7 +77,7 @@ class RetryFactory:
         storage = STORAGES[-1]
 
         key_prefix_str=f"{storage}/{self.job_name}"
-        filter="IMPORTED FAILED"
+        filter="IMPORTED SUCESSFULLY"
         return self._get_records(key_prefix_str, filter)
 
     def _get_failed_import_partitions(self, partition_name:str):
@@ -89,7 +90,7 @@ class RetryFactory:
             key_prefix_str=f"{storage}{self.job_name}/{db_name}/{tb_name}/{partition_name}"
         else:
             key_prefix_str=f"{storage}/{self.job_name}/{db_name}/{tb_name}/{partition_name}"
-        filter="IMPORTED FAILED"
+        filter="IMPORTED SUCESSFULLY"
         return self._get_records(key_prefix_str, filter)
 
 
@@ -98,7 +99,7 @@ class RetryFactory:
         storage = STORAGES[-1]
 
         key_prefix_str=f"{storage}/{self.job_name}"
-        filter="IMPORTED FAILED"
+        filter="IMPORTED SUCESSFULLY"
         pass
 
 
@@ -122,7 +123,7 @@ class RetryFactory:
             scan_kwargs = {
                 'Segment': segment,
                 'TotalSegments': total_segments,
-                'FilterExpression': Key('task_name').begins_with(key_prefix) & Key('status').eq(filter)
+                'FilterExpression': Key('task_name').begins_with(key_prefix) & Key('status').ne(filter)
             }
             response = table.scan(**scan_kwargs)
             return response
