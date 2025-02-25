@@ -81,7 +81,7 @@ class IWorkerThread(threading.Thread):
             try:
                 response = sqs.receive_message(
                     QueueUrl=queue_url,
-                    VisibilityTimeout=600
+                    VisibilityTimeout=60
                 )
                 if "Messages" not in response:
                     time.sleep(2)

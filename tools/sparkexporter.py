@@ -96,6 +96,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             s3_path = storage + f"{job_name}/{db_name}/{table_name}/default/" if storage.endswith(
                 "/") else f"{storage}/{job_name}/{db_name}/{table_name}/default/"
 
+        logger.info(f"[exporter]begin to {table_name} {pt_name} with {row_count}")
         starrocksSparkDF.write \
             .option("header", "false") \
             .option("maxRecordsPerFile", max_row_count) \
