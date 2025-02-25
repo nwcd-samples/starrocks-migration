@@ -112,6 +112,12 @@ class IWorkerThread(threading.Thread):
                            continue
                         else:
                             task_info.append(body)
+                    else:
+                        sqs.change_message_visibility(
+                            QueueUrl=queue_url,
+                            ReceiptHandle=receipt_handle,
+                            VisibilityTimeout=5
+                        )
 
                 now = datetime.now()
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
