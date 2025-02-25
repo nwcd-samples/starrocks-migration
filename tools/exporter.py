@@ -9,7 +9,7 @@ from .sparkexporter import run as sparkrun, get_spark
 from .sparkexporter import runone as sparkrunone
 from .mysql import get_conn
 from .log import get_logger
-from .helper import pick_list_key, pick_range_key, get_tasks
+from .helper import pick_list_key, pick_range_key, get_tasks, send_task_done_notification
 
 
 
@@ -37,6 +37,7 @@ class EWorkerThread(threading.Thread):
             except IndexError:
                 # 如果队列为空，退出线程
                 print(f"Thread {self.index}: No more data to process. Exiting.")
+                send_task_done_notification(self.job_name)
                 break
                 
 

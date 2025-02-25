@@ -108,7 +108,7 @@ class IWorkerThread(threading.Thread):
                         )
                         
                         if task_name == "ALL TASK DONE":
-                           return
+                           logger.info(f"{self.job_name} {task_name}")
                         else:
                             task_info.append(body)
 
