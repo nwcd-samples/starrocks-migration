@@ -63,7 +63,7 @@ class RetryFactory:
             }
 
             str_info = json.dumps(k_info)
-
+            print(f"send new task {str_info}")
             sqs.send_message(
                 QueueUrl=queue_url,
                 MessageBody=str_info,
