@@ -73,5 +73,7 @@ def run(job_name:str, table_name:str, partition_name = ""):
         for thread in threads:
             thread.join()
 
-    send_task_done_notification(self.job_name)
+    num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
+    for i in range(0, num_import_threads):
+        send_task_done_notification(job_name)
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
