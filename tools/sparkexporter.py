@@ -104,6 +104,10 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             .mode("overwrite") \
             .save(s3_path)
 
+        # 写入后，s3形成文件是异步行为，需要时间
+        # 简单根据行数做一定待定，保证完毕时间
+        if int(row_count/1000000) > 1:
+            time.sleep(int(row_count/1000000))
 
 def runone(job_name: str, table_name: str, logger):
     CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
