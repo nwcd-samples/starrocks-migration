@@ -37,7 +37,14 @@ def run(spark, job_name:str,table_name:str, file_path:str, logger):
         file_path = file_path.replace("s3://", "s3a://")
     logger.info(f"begin to process {file_path}")
     df = spark.read.parquet(file_path)
-    df.show(1)
+    row_count = df.count()
+    
+    if row_count == 0:
+        logger.info(f"[importer]ingore to write {table_name} {pt_name} due to {row_count} rows")
+        return True, ""
+    else:
+        logger.info(f"[importer]begin to {table_name} {pt_name} with {row_count} rows")
+
     try:
         df.write.format("starrocks") \
             .option("starrocks.table.identifier", f"{db_name}.{table_name}") \
