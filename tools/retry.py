@@ -1,6 +1,6 @@
 import os
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key,Attr
 
 from datetime import datetime
 import json
@@ -123,7 +123,7 @@ class RetryFactory:
             scan_kwargs = {
                 'Segment': segment,
                 'TotalSegments': total_segments,
-                'FilterExpression': Key('task_name').begins_with(key_prefix) & Key('status').ne(filter)
+                'FilterExpression': Key('task_name').begins_with(key_prefix) & Attr('status').ne(filter)
             }
             response = table.scan(**scan_kwargs)
             return response
