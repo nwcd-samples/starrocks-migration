@@ -90,6 +90,7 @@ class RetryFactory:
             key_prefix_str=f"{storage}{self.job_name}/{db_name}/{tb_name}/{partition_name}"
         else:
             key_prefix_str=f"{storage}/{self.job_name}/{db_name}/{tb_name}/{partition_name}"
+        print(key_prefix_str)
         filter=""
         return self._get_records(key_prefix_str, filter)
 
