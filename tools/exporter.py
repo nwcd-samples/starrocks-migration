@@ -37,12 +37,9 @@ class EWorkerThread(threading.Thread):
             except IndexError:
                 # 如果队列为空，退出线程
                 print(f"Thread {self.index}: No more data to process. Exiting.")
-                send_task_done_notification(self.job_name)
                 break
                 
-
-
-        
+ 
 
 def cat():
     time.sleep(5)
@@ -76,5 +73,5 @@ def run(job_name:str, table_name:str, partition_name = ""):
         for thread in threads:
             thread.join()
 
-    
+    send_task_done_notification(self.job_name)
     logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")

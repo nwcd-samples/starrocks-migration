@@ -40,10 +40,10 @@ def run(spark, job_name:str,table_name:str, file_path:str, logger):
     row_count = df.count()
     
     if row_count == 0:
-        logger.info(f"[importer]ingore to write {table_name} {pt_name} due to {row_count} rows")
+        logger.info(f"[importer]ingore to write {file_path} due to {row_count} rows")
         return True, ""
     else:
-        logger.info(f"[importer]begin to {table_name} {pt_name} with {row_count} rows")
+        logger.info(f"[importer]begin to {file_path}  with {row_count} rows")
 
     try:
         df.write.format("starrocks") \
