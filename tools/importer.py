@@ -99,6 +99,8 @@ class IWorkerThread(threading.Thread):
                     else:
                         parts = task_name.split("/")
                         item_job_name=parts[4]
+
+                    logger.info(f"[importer]===> {body_str}")
                     
                     receipt_handle = msg["ReceiptHandle"]
                     if item_job_name == self.job_name:
