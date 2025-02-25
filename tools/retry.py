@@ -14,10 +14,10 @@ from enum import Enum
 # 定义一个枚举类
 class RetryAction(Enum):
     IMPORT_TASK = 1
-    IMPORT_PARTITIONS = 1
-    EXPORT = 2
-    SYNC = 3
-    SHOW = 4
+    IMPORT_PARTITIONS = 2
+    EXPORT = 3
+    SYNC = 4
+    SHOW = 5
 
 def get_retry_action(desc:str):
     if desc == "import":
