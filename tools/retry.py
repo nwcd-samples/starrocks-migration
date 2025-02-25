@@ -122,9 +122,14 @@ class RetryFactory:
         def scan_table(segment, total_segments, key_prefix):
             scan_kwargs = {
                 'Segment': segment,
-                'TotalSegments': total_segments,
-                'FilterExpression': Key('task_name').begins_with(key_prefix) & Attr('status').ne(filter)
+                'TotalSegments': total_segments
             }
+            if filter == "":
+                scan_kwargs['FilterExpression'] =  Key('task_name').begins_with(key_prefix)
+            else:
+                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(filter)
+
+
             response = table.scan(**scan_kwargs)
             return response
 
