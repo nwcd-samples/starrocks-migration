@@ -15,7 +15,7 @@ def get_logger(logger_name:str):
     # 设置日志级别
     logger.setLevel(logging.INFO)
     # 创建一个handler，用于写入日志文件
-    handler = RotatingFileHandler(f'logs/{logger_name}.log', maxBytes=100000, backupCount=100)
+    handler = RotatingFileHandler(f'logs/{logger_name}.log', maxBytes=1000000, backupCount=100)
     logger.addHandler(handler)
 
     # 创建一个handler，用于将日志输出到控制台
