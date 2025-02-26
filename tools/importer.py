@@ -89,7 +89,6 @@ class IWorkerThread(threading.Thread):
 
                 messages = response["Messages"]
 
-                task_info = list()
                 for msg in messages:
                     body_str = msg["Body"]
                     body = json.loads(body_str)
@@ -106,25 +105,25 @@ class IWorkerThread(threading.Thread):
                             QueueUrl=queue_url,
                             ReceiptHandle=receipt_handle
                         )
-                        task_info.append(body)
+                        if task_name == "ALL TASK DONE":
+                            time.sleep(20)
+                            logger.info(f"{self.job_name} importer worker {self.index} Finished Task!!!")
+                            return
+
                     else:
                         sqs.change_message_visibility(
                             QueueUrl=queue_url,
                             ReceiptHandle=receipt_handle,
                             VisibilityTimeout=5
                         )
+                        continue
 
-                now = datetime.now()
-                current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+                    now = datetime.now()
+                    current_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
-                for body in task_info:
+                
 
                     utask_name = body['task_name']
-                    if utask_name == "ALL TASK DONE":
-                        time.sleep(20)
-                        logger.info(f"{self.job_name} importer worker {self.index} Finished Task!!!")
-                        return
-
                     res = dynamodb.update_item(
                         TableName=recorder,
                         Key={
