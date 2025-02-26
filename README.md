@@ -66,7 +66,10 @@ python3 taskmanager.py -h
 例如：
 ```
 ## 重新导入partition  p20241108 的所有数据
-python3 taskmanager.py retry --job forfill --content p20241108
+python3 taskmanager.py retry --job u23 --content p20250223
+
+## 重新导入指定任务的所有失败数据
+python3 taskmanager.py retry --job forfill
 ```
 
 ### 增量迁移

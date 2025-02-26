@@ -69,7 +69,10 @@ class RetryFactory:
                 MessageBody=str_info,
                 DelaySeconds=0
             )
-        send_task_done_notification(self.job_name)
+        num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
+        for i in range(0, num_import_threads):
+            send_task_done_notification(self.job_name)
+
 
 
     def _get_failed_import_tasks(self):
