@@ -81,8 +81,8 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
     starrocksSparkDF = starrocksSparkDF.load()
 
     # 强制执行
-    row_count = starrocksSparkDF.count()
-    if row_count > 0:
+    
+    if True:
         if storage.startswith("s3://"):
             storage = storage.replace("s3://", "s3a://")
 
@@ -112,8 +112,8 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
 
         # 写入后，s3形成文件是异步行为，需要时间
         # 简单根据行数做一定待定，保证完毕时间
-        if int(row_count/1000000) > 1:
-            time.sleep(int(row_count/1000000))
+        # if int(row_count/1000000) > 1:
+        #     time.sleep(int(row_count/1000000))
 
 def runone(job_name: str, table_name: str, logger):
     CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
