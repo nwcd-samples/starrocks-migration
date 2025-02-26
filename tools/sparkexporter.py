@@ -98,12 +98,14 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
 
         
         logger.info(f"[exporter]begin to {table_name} {pt_name} with {row_count}")
-        starrocksSparkDF.repartition(10).write \
+        starrocksSparkDF.write \
             .option("header", "false") \
             .option("maxRecordsPerFile", max_row_count) \
-            .config("spark.executor.instances", "10") \
+            .config("spark.executor.instances", "32") \
             .config("spark.executor.memory", "8g") \
             .config("spark.sql.shuffle.partitions", "200") \
+            .config("spark.hadoop.fs.s3a.connection.maximum", "100") \
+            .config("spark.hadoop.fs.s3a.connection.timeout", "10000") \
             .format("parquet") \
             .mode("overwrite") \
             .save(s3_path)
