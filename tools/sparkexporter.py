@@ -43,8 +43,11 @@ def get_spark(job_name: str, table_name: str, index):
     .config("spark.scheduler.mode", "FIFO") \
     .config("spark.local.dir", spark_cache) \
     .config("spark.memory.offHeap.enabled", "true") \
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+    .config("spark.kryo.registrationRequired", "false") \
     .config("spark.memory.offHeap.size", "12g") \
-    .config("spark.executor.memory", "22g") \
+    .config("spark.driver.memory", "8g") \
+    .config("spark.executor.memory", "8g") \
     .getOrCreate()
     return spark
 
