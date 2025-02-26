@@ -48,6 +48,7 @@ def get_spark(job_name: str, table_name: str, index):
     .config("spark.memory.offHeap.size", "12g") \
     .config("spark.driver.memory", "8g") \
     .config("spark.executor.memory", "8g") \
+    .config("spark.dynamicAllocation.enabled", "true") \
     .getOrCreate()
     return spark
 
