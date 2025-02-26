@@ -44,7 +44,7 @@ def get_spark(job_name: str, table_name: str, index):
     .config("spark.local.dir", spark_cache) \
     .config("spark.memory.offHeap.enabled", "true") \
     .config("spark.memory.offHeap.size", "12g") \
-    .config("spark.executor.memory", "22") \
+    .config("spark.executor.memory", "22g") \
     .getOrCreate()
     return spark
 
