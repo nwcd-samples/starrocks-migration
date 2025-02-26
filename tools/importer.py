@@ -106,13 +106,7 @@ class IWorkerThread(threading.Thread):
                             QueueUrl=queue_url,
                             ReceiptHandle=receipt_handle
                         )
-                        
-                        if task_name == "ALL TASK DONE":
-                            time.sleep(20)
-                            logger.info(f"{self.job_name} importer worker {self.index} Finished Task!!!")
-                            return
-                        else:
-                            task_info.append(body)
+                        task_info.append(body)
                     else:
                         sqs.change_message_visibility(
                             QueueUrl=queue_url,
@@ -124,7 +118,12 @@ class IWorkerThread(threading.Thread):
                 current_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
                 for body in task_info:
+
                     utask_name = body['task_name']
+                    if utask_name == "ALL TASK DONE":
+                        time.sleep(20)
+                        logger.info(f"{self.job_name} importer worker {self.index} Finished Task!!!")
+                        return
 
                     res = dynamodb.update_item(
                         TableName=recorder,
