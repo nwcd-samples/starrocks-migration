@@ -43,7 +43,8 @@ def get_spark(job_name: str, table_name: str, index):
     .config("spark.scheduler.mode", "FIFO") \
     .config("spark.local.dir", spark_cache) \
     .config("spark.memory.offHeap.enabled", "true") \
-    .config("spark.memory.offHeap.size", "2g") \
+    .config("spark.memory.offHeap.size", "6g") \
+    .config("spark.executor.memory", "20g") \
     .getOrCreate()
     return spark
 
