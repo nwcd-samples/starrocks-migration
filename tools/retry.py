@@ -1,7 +1,7 @@
 import os
 import boto3
 from boto3.dynamodb.conditions import Key,Attr
-
+import time
 from datetime import datetime
 import json
 from .helper import send_task_done_notification
@@ -70,6 +70,7 @@ class RetryFactory:
                 DelaySeconds=0
             )
         num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
+        time.sleep(10)
         for i in range(0, num_import_threads):
             send_task_done_notification(self.job_name)
 
