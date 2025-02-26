@@ -18,7 +18,7 @@ def clear():
     while True:
         response = sqs.receive_message(
                     QueueUrl=queue_url,
-                    VisibilityTimeout=10
+                    VisibilityTimeout=1
                 )
         if "Messages" not in response:
             break
@@ -35,9 +35,6 @@ def clear():
                         QueueUrl=queue_url,
                         ReceiptHandle=receipt_handle
                     )  
-            print(ok)
-        time.sleep(0.1)
-
 def main():
     # 创建一个解析器
     parser = argparse.ArgumentParser(description="Starrocks 集群同步")
@@ -75,10 +72,7 @@ def main():
         conf.load_env(env_path)
         table_name_str = os.getenv("TABLE_NAME")
         table_names = table_name_str.split(",")
-        for table_name in table_names:
-            exporter.run(job_name, table_name)
-        time.sleep(30)
-        send_task_done_notification(job_name)
+        exporter.run(job_name, table_names)
     elif args.command == "import":
         env_path = args.env
         job_name = args.job
