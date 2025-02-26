@@ -26,6 +26,11 @@ def get_spark(job_name: str, table_name: str, index):
         .config("spark.jars", dependency_jars) \
         .config("spark.scheduler.mode", "FIFO") \
         .config("spark.local.dir", spark_cache) \
+        .config("spark.executor.instances", "32") \
+        .config("spark.executor.memory", "8g") \
+        .config("spark.sql.shuffle.partitions", "200") \
+        .config("spark.hadoop.fs.s3a.connection.maximum", "100") \
+        .config("spark.hadoop.fs.s3a.connection.timeout", "10000") \
         .getOrCreate()
     return spark
 
@@ -101,11 +106,6 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         starrocksSparkDF.write \
             .option("header", "false") \
             .option("maxRecordsPerFile", max_row_count) \
-            .config("spark.executor.instances", "32") \
-            .config("spark.executor.memory", "8g") \
-            .config("spark.sql.shuffle.partitions", "200") \
-            .config("spark.hadoop.fs.s3a.connection.maximum", "100") \
-            .config("spark.hadoop.fs.s3a.connection.timeout", "10000") \
             .format("parquet") \
             .mode("overwrite") \
             .save(s3_path)
