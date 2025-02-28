@@ -1,8 +1,8 @@
-
 import boto3
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
-def delete_all_items(table_name, region_name='eu-central-1'):
+
+def delete_all_items(table_name:str, region_name='eu-central-1'):
     """
     删除 DynamoDB 表中所有数据
 
@@ -40,7 +40,7 @@ def delete_all_items(table_name, region_name='eu-central-1'):
             if "task_name" in item:
                 delete_requests.append({
                     'DeleteRequest': {
-                        'Key':{'task_name':{'S': item['task_name']['S']}}
+                        'Key': {'task_name': {'S': item['task_name']['S']}}
                     }
                 })
 
@@ -62,6 +62,7 @@ def delete_all_items(table_name, region_name='eu-central-1'):
         print("AWS 凭证不完整。请检查配置。")
     except Exception as e:
         print(f"发生错误: {e}")
+
 
 # 示例调用
 

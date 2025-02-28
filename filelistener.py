@@ -6,13 +6,13 @@ from datetime import datetime, timedelta
 
 region_name = "eu-central-1"
 
-
 # ===========================需要修改或确认的配置参数================================
 dynamodb_task_trace_tb = 'starrocks-migration-task-trace-event'
 sqs_url = "https://sqs.eu-central-1.amazonaws.com/515491257789/starrocks_migration_queue"
 # ===========================需要修改或确认的配置参数================================
 
 FILE_STATUS_UPLOAD_TO_S3 = "file uploaded to s3"
+
 
 def lambda_handler(event, context):
     print("Received event: " + str(event))
@@ -28,12 +28,12 @@ def lambda_handler(event, context):
         for key in keys:
             if not key.endswith(".csv") and not key.endswith(".parquet"):
                 continue
-            if key.find("_temporary") >=0:
+            if key.find("_temporary") >= 0:
                 continue
             # 格式为 bucket_name/前缀路径(配置文件中配置)/task_name/db_name/table_name/partition_name/file_name.csv
-            ukey = urllib.parse.unquote_plus(key, encoding='utf-8')
-            task_name = "s3://" + ukey
-            
+            u_key = urllib.parse.unquote_plus(key, encoding='utf-8')
+            task_name = "s3://" + u_key
+
             task_count += 1
             try:
                 rep = dynamodb.update_item(
@@ -43,12 +43,12 @@ def lambda_handler(event, context):
                     },
                     AttributeUpdates={
                         'status': {
-                            'Value':  {
+                            'Value': {
                                 "S": f"{FILE_STATUS_UPLOAD_TO_S3}"
                             }
                         },
                         'update_time': {
-                            'Value':  {
+                            'Value': {
                                 "S": f"{current_time}"
                             }
                         }

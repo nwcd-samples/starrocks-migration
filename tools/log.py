@@ -1,12 +1,10 @@
-
 import logging
 from logging.handlers import RotatingFileHandler
 
 import os
 
 
-
-def get_logger(logger_name:str):
+def get_logger(logger_name: str):
     if not os.path.exists('logs'):
         os.makedirs('logs')
 

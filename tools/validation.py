@@ -3,7 +3,8 @@ from .mysql import get_conn
 from .log import get_logger
 from .helper import pick_list_key, pick_range_key, get_tasks
 
-def compare(sr_conn,dest_conn, cmd:str,tb_metric_items,logger):
+
+def compare(sr_conn, dest_conn, cmd: str, tb_metric_items, logger):
     source_values = dict()
     target_values = dict()
     stat = list()
@@ -37,15 +38,13 @@ def compare(sr_conn,dest_conn, cmd:str,tb_metric_items,logger):
         logger.error(ex)
 
     for key in source_values:
-        if source_values[key] !=target_values[key]:
-            logger.error(f"NOT MATCH {key}==>{source_values[key] } != {target_values[key]}")
+        if source_values[key] != target_values[key]:
+            logger.error(f"NOT MATCH {key}==>{source_values[key]} != {target_values[key]}")
             stat.append(key)
         else:
-            logger.info(f"MATCH {key}==>{source_values[key] } == {target_values[key]}")
+            logger.info(f"MATCH {key}==>{source_values[key]} == {target_values[key]}")
 
     return stat
-    
-
 
 
 def run():
@@ -60,7 +59,6 @@ def run():
         metric_items = metrics[i].split("|")
         tablecal[table_names[i]] = metric_items
 
-
     notmatch = []
 
     for table_name in table_names:
@@ -68,25 +66,24 @@ def run():
         sconn = get_conn()
         dest = get_conn(cluster_type="target")
         tb_metric_items = tablecal[table_name]
-        tb_metric_items_str =",".join([f"sum({item}) as {item}" for item in tb_metric_items])
+        tb_metric_items_str = ",".join([f"sum({item}) as {item}" for item in tb_metric_items])
 
         partitions = get_tasks(table_name)
         if not partitions:
             tb_cmd = f"""select "{table_name}" as name,{tb_metric_items_str}, count(*) as row_count from {table_name}"""
-            stat = compare(sconn,dest, tb_cmd, tb_metric_items, logger)
+            stat = compare(sconn, dest, tb_cmd, tb_metric_items, logger)
             if stat:
                 notmatch.append(*stat)
         else:
             for partition in partitions:
-                name =f"{table_name}_{partition['name']}"
-                pt_name=partition['name']
+                name = f"{table_name}_{partition['name']}"
+                pt_name = partition['name']
 
                 pt_cmd = f"""select "{name}" as name,{tb_metric_items_str}, count(*) as row_count from {table_name} partition({pt_name})"""
-                stat = compare(sconn,dest, pt_cmd, tb_metric_items, logger)
+                stat = compare(sconn, dest, pt_cmd, tb_metric_items, logger)
                 if stat:
                     notmatch.append(*stat)
 
-                
         sconn.close()
         dest.close()
 
@@ -94,6 +91,3 @@ def run():
         logger.error(f"NOT MATCH {','.join(notmatch)}")
     else:
         logger.info("ALL PARTITION IS IS RIGHT !!!")
-
-
-            

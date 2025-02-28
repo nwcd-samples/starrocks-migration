@@ -6,6 +6,17 @@ import time
 MIN_COUNT = 1000
 
 
+def find_data_filter_by_table(name: str) -> str:
+    table_names = os.getenv("TABLE_NAME").split(",")
+    data_filters = os.getenv("DATA_FILTER").split(",")
+    check = len(data_filters)
+    for i in range(0, len(table_names)):
+        if table_names[i] == name:
+            if i < check:
+                return data_filters[i]
+    return ""
+
+
 def get_data_source(cluster_type="source"):
     host_str = os.getenv("SOURCE_HOST") if cluster_type == "source" else os.getenv("TARGET_HOST")
     hosts = host_str.split(",")
@@ -31,33 +42,31 @@ def get_data_source(cluster_type="source"):
     # .config("spark.executor.memoryOverhead", "1024") \
     # .config("spark.hadoop.fs.s3a.connection.maximum", "100") \
     # .config("spark.hadoop.fs.s3a.connection.timeout", "30000") \
-    #.config("spark.hadoop.fs.s3a.list.version", "2") \
-    #.config("parquet.enable.summary-metadata", "false") \
-    #.config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    #.config("fs.s3a.fast.upload", "true") \
+    # .config("spark.hadoop.fs.s3a.list.version", "2") \
+    # .config("parquet.enable.summary-metadata", "false") \
+    # .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    # .config("fs.s3a.fast.upload", "true") \
+
+
 def get_spark(job_name: str, table_name: str, index):
     dependency_jars = os.getenv("DEPENDENCY_JARS")
     spark_cache = os.getenv("SPARK_CACHE")
     spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}{index}") \
-    .config("spark.jars", dependency_jars) \
-    .config("spark.scheduler.mode", "FIFO") \
-    .config("spark.local.dir", spark_cache) \
-    .config("spark.memory.offHeap.enabled", "true") \
-    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
-    .config("spark.kryo.registrationRequired", "false") \
-    .config("spark.memory.offHeap.size", "12g") \
-    .config("spark.driver.memory", "8g") \
-    .config("spark.executor.memory", "8g") \
-    .config("spark.dynamicAllocation.enabled", "true") \
-    .getOrCreate()
+        .config("spark.jars", dependency_jars) \
+        .config("spark.scheduler.mode", "FIFO") \
+        .config("spark.local.dir", spark_cache) \
+        .config("spark.memory.offHeap.enabled", "true") \
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+        .config("spark.kryo.registrationRequired", "false") \
+        .config("spark.memory.offHeap.size", "12g") \
+        .config("spark.driver.memory", "8g") \
+        .config("spark.executor.memory", "4g") \
+        .config("spark.dynamicAllocation.enabled", "true") \
+        .getOrCreate()
     return spark
 
 
 def run(spark, job_name: str, table_name: str, partition, logger):
-    if partition["rowcount"] == 0:
-        logger.warn(f"[exporter][{job_name}]===>NO DATA IN {table_name}==>{pt_name}!")
-        return
-
     pt_name = partition["name"]
 
     if partition["ptype"] == "list":
@@ -70,10 +79,15 @@ def run(spark, job_name: str, table_name: str, partition, logger):
             filter_str = f"{partition['key']}>={ptv} and {partition['key']} < {ptv2}"
         else:
             filter_str = f"{partition['key']}>='{ptv}' and {partition['key']} < '{ptv2}'"
-    logger.info(f"[exporter][{job_name}]===>BEGION RUN {table_name}==>{pt_name}!")
+
+    data_filter = find_data_filter_by_table(table_name)
+    if data_filter:
+        filter_str = f"{filter_str} and {data_filter}"
+
+    logger.info(f"[exporter][{job_name}]===>BEGIN RUN {table_name}==>{pt_name}!")
     try:
-        output = runp(spark, job_name, table_name, filter_str, pt_name, logger)
-        time.sleep(2)
+        output = runp(spark, job_name, table_name, filter_str, partition, logger)
+        time.sleep(1)
         logger.info(f"[exporter][{job_name}]===>SUCCESS RUN {table_name}==>{pt_name}!")
         return output
     except Exception as ex:
@@ -82,59 +96,72 @@ def run(spark, job_name: str, table_name: str, partition, logger):
         spark.catalog.clearCache()
 
 
-
-
-def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, pt_name: str, logger):
+def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, partition, logger):
     # 创建 SparkSession
     # 使用 StarRocks 数据源读取数据
     host, port, user, pwd, db_name = get_data_source()
     storage = os.getenv("STORAGES")
+    starrocks_table_size = int(os.getenv("STARROCKS_TABLE_SIZE", "10000"))
     max_row_count = int(os.getenv("PER_FILE_MAX_ROW_COUNT"))
 
-    starrocksSparkDF = spark.read.format("starrocks") \
+    starrocks_df = spark.read.format("starrocks") \
         .option("starrocks.table.identifier", f"{db_name}.{table_name}") \
         .option("starrocks.fe.http.url", f"{host}:8030") \
         .option("starrocks.fe.jdbc.url", f"jdbc:mysql://{host}:{port}") \
         .option("starrocks.user", f"{user}") \
-        .option("starrocks.password", f"{pwd}")
+        .option("starrocks.password", f"{pwd}") \
+        .option("starrocks.exec.mem.limit", 4294967296) \
+        .option("starrocks.batch.size", 10000) \
+        .option("starrocks.request.tablet.size", starrocks_table_size)
 
-    if pt_name and filter_str:
+    if partition and filter_str:
+        pt_name = partition["name"]
         logger.info(f"begin partition {pt_name} with {filter_str}")
-        starrocksSparkDF = starrocksSparkDF.option("starrocks.filter.query", filter_str)
+        starrocks_df = starrocks_df.option("starrocks.filter.query", filter_str)
 
-    starrocksSparkDF = starrocksSparkDF.load()
+        starrocks_df = starrocks_df.load()
 
-    # 强制执行
-    directim= os.getenv("SPARK_DIRECT")=="True"
-    if not directim:
+        row_count = partition["rowcount"]
+        # 统计得来的数字，不准确
+        if row_count < 1000:
+            # 可能是空数据
+            row_count = starrocks_df.count()
+
+        if row_count == 0:
+            # 空数据无需导出
+            return ""
+
+    direct_im = os.getenv("SPARK_DIRECT") == "True"
+    if not direct_im:
         if storage.startswith("s3://"):
             storage = storage.replace("s3://", "s3a://")
 
             # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
-            # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
-        
-        
-        localdir= os.getenv("SPARK_TEMP")
+            # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/
+            # data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
 
+        local_dir = os.getenv("SPARK_TEMP")
 
-        if pt_name:
-            testlocal = localdir + f"/{job_name}/{db_name}/{table_name}/{pt_name}/"
-            logger.info(f"[exporter]begin to {table_name} {pt_name} with {testlocal}")
+        if partition:
+            pt_name = partition["name"]
+            local_path = local_dir + f"/{job_name}/{db_name}/{table_name}/{pt_name}/"
+            logger.info(f"[exporter]begin to {table_name} {pt_name} with {local_path}")
         else:
-            testlocal = localdir + f"/{job_name}/{db_name}/{table_name}/default/"
-            logger.info(f"[exporter]begin to {table_name} default with {testlocal}")
-        starrocksSparkDF.coalesce(120).write \
+            local_path = local_dir + f"/{job_name}/{db_name}/{table_name}/default/"
+            logger.info(f"[exporter]begin to {table_name} default with {local_path}")
+
+        starrocks_df.coalesce(20).write \
             .option("header", "false") \
             .option("maxRecordsPerFile", max_row_count) \
             .format("parquet") \
             .mode("overwrite") \
-            .save(testlocal)
+            .save(local_path)
 
-        time.sleep(5)
-        return testlocal
+        time.sleep(2)
+        return local_path
     else:
-        im_host, im_port,im_user,im_pwd,im_db_name = get_data_source()
-        starrocksSparkDF.write.format("starrocks") \
+        im_host, im_port, im_user, im_pwd, im_db_name = get_data_source()
+        starrocks_df.write.format("starrocks") \
             .option("starrocks.table.identifier", f"{im_db_name}.{table_name}") \
             .option("starrocks.fe.http.url", f"{im_host}:8030") \
             .option("starrocks.fe.jdbc.url", f"jdbc:mysql://{im_host}:{im_port}") \
@@ -143,20 +170,8 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             .mode("append") \
             .save()
 
-        # 写入后，s3形成文件是异步行为，需要时间
-        # 简单根据行数做一定待定，保证完毕时间
-        # if int(row_count/1000000) > 1:
-        #     time.sleep(int(row_count/1000000))
 
 def runone(job_name: str, table_name: str, logger):
-    CONCURRENCY = int(os.getenv("EXPORT_CONCURRENCY"))
-    dependency_jars = os.getenv("DEPENDENCY_JARS")
-    spark_cache = os.getenv("SPARK_CACHE")
-    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}") \
-        .config("spark.jars", dependency_jars) \
-        .config("spark.scheduler.mode", "FIFO") \
-        .config("spark.local.dir", spark_cache) \
-        .config("spark.scheduler.allocation.maxConcurrent", f"{CONCURRENCY}") \
-        .getOrCreate()
+    spark = get_spark(job_name, table_name, index=0)
 
-    runp(spark, job_name, table_name, "", "", logger)
+    runp(spark, job_name, table_name, "", dict(), logger)

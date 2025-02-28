@@ -3,7 +3,8 @@ import boto3
 import json
 from .mysql import get_conn
 
-def send_task_done_notification(job_name:str):
+
+def send_task_done_notification(job_name: str):
     aws_region = os.getenv("AWS_REGION")
     k_info = {
         "task_name": "ALL TASK DONE",
@@ -11,7 +12,7 @@ def send_task_done_notification(job_name:str):
         "status": job_name
     }
 
-    # 告诉immporter ,导出任务结束了
+    # 告诉importer ,导出任务结束了
     str_info = json.dumps(k_info)
     queue_url = os.getenv("TASK_QUEUE")
     queue_endpoint = os.getenv("TASK_QUEUE_ENDPOINT")
@@ -24,6 +25,7 @@ def send_task_done_notification(job_name:str):
             DelaySeconds=0
         )
 
+
 def pick_range_key(partition_range_str):
     # 首先，根据"keys: ["分割字符串，然后取第二部分
     parts = partition_range_str.split("keys: [")
@@ -31,12 +33,14 @@ def pick_range_key(partition_range_str):
     key2_str = parts[2].split("];")[0]
     return key1_str, key2_str
 
-def pick_list_key(partition_str:str):
+
+def pick_list_key(partition_str: str):
     index1 = partition_str.find("((")
     index2 = partition_str.find("))")
-    return partition_str[index1+2:index2]
+    return partition_str[index1 + 2:index2]
 
-def get_tasks(table_name:str)->list:
+
+def get_tasks(table_name: str) -> list:
     # filter method可以有如下类型：EACH,STARTWITH,ENDWITH,RANGE
     task_filter = os.getenv("TASK_FILTER", "")
     select_p = None
@@ -45,7 +49,7 @@ def get_tasks(table_name:str)->list:
     if task_filter:
         if task_filter.startswith("EACH("):
             parts = task_filter[len("EACH("):-1].split(",")
-            select_p = {item:True for item in parts}
+            select_p = {item: True for item in parts}
         elif task_filter.startswith("RANGE("):
             parts = task_filter[len("RANGE("):-1].split(",")
             begin = parts[0]
@@ -77,16 +81,16 @@ def get_tasks(table_name:str)->list:
                 if row["PartitionName"] >= end:
                     break
 
-            if (select_p and  row["PartitionName"] in select_p) or not select_p:
+            if (select_p and row["PartitionName"] in select_p) or not select_p:
                 if "Range" in row:
-                    valuestr = row["Range"]
-                    if not valuestr:
+                    value_str = row["Range"]
+                    if not value_str:
                         continue
                     datatype = "str"
-                    if valuestr.find("INT") > 0:
+                    if value_str.find("INT") > 0:
                         datatype = "number"
 
-                    p_start, p_end = pick_range_key(valuestr)
+                    p_start, p_end = pick_range_key(value_str)
                     partitions.append(
                         {
                             "name": row["PartitionName"],
@@ -94,19 +98,19 @@ def get_tasks(table_name:str)->list:
                             "start": p_start,
                             "end": p_end,
                             "type": datatype,
-                            "ptype":"range",
-                            "rowcount":row["RowCount"]
+                            "ptype": "range",
+                            "rowcount": row["RowCount"]
                         }
                     )
                 else:
-                    valuestr = row["List"]
-                    if not valuestr:
+                    value_str = row["List"]
+                    if not value_str:
                         continue
                     datatype = "str"
-                    if valuestr.find("INT") > 0:
+                    if value_str.find("INT") > 0:
                         datatype = "number"
 
-                    p_start= pick_list_key(valuestr)
+                    p_start = pick_list_key(value_str)
                     partitions.append(
                         {
                             "name": row["PartitionName"],
@@ -115,11 +119,9 @@ def get_tasks(table_name:str)->list:
                             "end": "",
                             "type": datatype,
                             "ptype": "list",
-                            "rowcount":row["RowCount"]
+                            "rowcount": row["RowCount"]
                         }
                     )
 
-
-                
     conn.close()
     return partitions
