@@ -84,7 +84,9 @@ def run(spark, job_name: str, table_name: str, partition, logger):
     if data_filter:
         filter_str = f"{filter_str} and {data_filter}"
 
-    logger.info(f"[exporter][{job_name}]===>BEGIN RUN {table_name}==>{pt_name}!")
+
+
+    logger.info(f"[exporter][{job_name}]===>BEGIN RUN {table_name}==>{pt_name} with {filter_str}!")
     try:
         output = runp(spark, job_name, table_name, filter_str, partition, logger)
         time.sleep(1)
@@ -111,8 +113,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         .option("starrocks.user", f"{user}") \
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.exec.mem.limit", 4294967296) \
-        .option("starrocks.batch.size", 10000) \
-        .option("starrocks.request.tablet.size", starrocks_table_size)
+        .option("starrocks.batch.size", 10000)
 
     if partition and filter_str:
         pt_name = partition["name"]

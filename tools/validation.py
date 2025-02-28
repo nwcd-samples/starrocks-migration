@@ -1,7 +1,7 @@
 import os
 from .mysql import get_conn
 from .log import get_logger
-from .helper import pick_list_key, pick_range_key, get_tasks
+from .helper import split_task_filter, get_tasks
 
 
 def compare(sr_conn, dest_conn, cmd: str, tb_metric_items, logger):
@@ -59,21 +59,27 @@ def run():
         metric_items = metrics[i].split("|")
         tablecal[table_names[i]] = metric_items
 
-    notmatch = []
+    not_match = []
 
-    for table_name in table_names:
+    task_filters = split_task_filter(os.getenv("TASK_FILTER"))
+    task_filters_count = len(task_filters)
+    for item_index in range(0, len(table_names)):
+        table_name = table_names[item_index]
         logger.info(f"====================>begin analyze the table {table_name}")
         sconn = get_conn()
         dest = get_conn(cluster_type="target")
         tb_metric_items = tablecal[table_name]
         tb_metric_items_str = ",".join([f"sum({item}) as {item}" for item in tb_metric_items])
 
-        partitions = get_tasks(table_name)
+        if item_index < task_filters_count:
+            partitions = get_tasks(table_name, task_filters[item_index])
+        else:
+            partitions = get_tasks(table_name, task_filters[item_index])
         if not partitions:
             tb_cmd = f"""select "{table_name}" as name,{tb_metric_items_str}, count(*) as row_count from {table_name}"""
             stat = compare(sconn, dest, tb_cmd, tb_metric_items, logger)
             if stat:
-                notmatch.append(*stat)
+                not_match.append(*stat)
         else:
             for partition in partitions:
                 name = f"{table_name}_{partition['name']}"
@@ -82,12 +88,12 @@ def run():
                 pt_cmd = f"""select "{name}" as name,{tb_metric_items_str}, count(*) as row_count from {table_name} partition({pt_name})"""
                 stat = compare(sconn, dest, pt_cmd, tb_metric_items, logger)
                 if stat:
-                    notmatch.append(*stat)
+                    not_match.append(*stat)
 
         sconn.close()
         dest.close()
 
-    if len(notmatch) > 0:
-        logger.error(f"NOT MATCH {','.join(notmatch)}")
+    if len(not_match) > 0:
+        logger.error(f"NOT MATCH {','.join(not_match)}")
     else:
         logger.info("ALL PARTITION IS IS RIGHT !!!")

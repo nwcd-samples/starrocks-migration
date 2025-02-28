@@ -11,7 +11,7 @@ from .sparkexporter import run as sparkrun, get_spark
 from .sparkexporter import runone as sparkrunone
 from .mysql import get_conn
 from .log import get_logger
-from .helper import pick_list_key, pick_range_key, get_tasks, send_task_done_notification
+from .helper import get_tasks, send_task_done_notification, split_task_filter
 
 logger = get_logger("exporter")
 
@@ -120,7 +120,7 @@ class CheckFileThread(threading.Thread):
             time.sleep(1)
 
 
-def run(job_name: str, table_names: list):
+def run(job_name: str):
     logger.info("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     logger.info(f"NEW　JOB BEGIN {job_name}")
     logger.info("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
@@ -138,11 +138,17 @@ def run(job_name: str, table_names: list):
     s3_bucket = bucket_info[2]
     s3_prefix = f"{bucket_info[3]}"
 
-    for table_name in table_names:
+    task_filters = split_task_filter(os.getenv("TASK_FILTER"))
+    task_filters_count = len(task_filters)
+    for item_index in range(0, len(table_names)):
         logger.info("")
         logger.info("")
+        table_name = table_names[item_index]
         logger.info(f"[exporter][{job_name}]===>BEGIN RUN {table_name}!")
-        partitions = get_tasks(table_name)
+        if item_index < task_filters_count:
+            partitions = get_tasks(table_name, task_filters[item_index])
+        else:
+            partitions = get_tasks(table_name, task_filters[item_index])
         logger.info(partitions)
 
         message_queue = queue.Queue()

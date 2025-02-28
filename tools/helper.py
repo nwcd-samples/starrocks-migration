@@ -40,9 +40,26 @@ def pick_list_key(partition_str: str):
     return partition_str[index1 + 2:index2]
 
 
-def get_tasks(table_name: str) -> list:
-    # filter method可以有如下类型：EACH,STARTWITH,ENDWITH,RANGE
-    task_filter = os.getenv("TASK_FILTER", "")
+def split_task_filter(filter_str: str) -> list:
+    # Step 1: 用 `),` 分割字符串
+    parts = filter_str.split('),')
+
+    functions = []
+    for part in parts:
+        # Step 2: 检查并补全右括号
+        if part.rstrip() and not part.endswith(')'):
+            part += ')'
+        # 过滤空字符串（例如输入末尾多出的 `)` 导致的空片段）
+        if part.strip():
+            functions.append(part)
+    return functions
+
+
+def get_tasks(table_name: str, task_filter: str = "") -> list:
+    if task_filter.startswith("ALL"):
+        return list()
+
+    # filter method可以有如下类型：DEFAULT,ALL,EACH,STARTWITH,ENDWITH,RANGE
     select_p = None
     begin = None
     end = None
@@ -99,7 +116,7 @@ def get_tasks(table_name: str) -> list:
                             "end": p_end,
                             "type": datatype,
                             "ptype": "range",
-                            "rowcount": row["RowCount"]
+                            "rowcount": int(row["RowCount"])
                         }
                     )
                 else:
@@ -119,7 +136,7 @@ def get_tasks(table_name: str) -> list:
                             "end": "",
                             "type": datatype,
                             "ptype": "list",
-                            "rowcount": row["RowCount"]
+                            "rowcount": int(row["RowCount"])
                         }
                     )
 
