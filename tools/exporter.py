@@ -149,7 +149,7 @@ def run(job_name: str):
         if item_index < task_filters_count:
             partitions = get_tasks(table_name, task_filters[item_index])
         else:
-            partitions = get_tasks(table_name, task_filters[item_index])
+            partitions = get_tasks(table_name)
         logger.info(partitions)
 
         check_queue = queue.Queue()
@@ -186,9 +186,9 @@ def run(job_name: str):
 
         time.sleep(10)
 
-        num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
-        for i in range(0, num_import_threads):
-            send_task_done_notification(job_name)
         logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
 
+    num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
+    for i in range(0, num_import_threads):
+        send_task_done_notification(job_name)
     logger.info(f"[exporter][{job_name}]===>{job_name} bingo!")

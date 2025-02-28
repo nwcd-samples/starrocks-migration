@@ -154,7 +154,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             local_path = local_dir + f"/{job_name}/{db_name}/{table_name}/default/"
             logger.info(f"[exporter]Begin to {table_name} default with {local_path}")
 
-        starrocks_df.coalesce(20).write \
+        starrocks_df.coalesce(10).write \
             .option("header", "false") \
             .option("maxRecordsPerFile", max_row_count) \
             .format("parquet") \
@@ -165,7 +165,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         return local_path
     else:
         im_host, im_port, im_user, im_pwd, im_db_name = get_data_source()
-        starrocks_df.coalesce(20).write.format("starrocks") \
+        starrocks_df.coalesce(10).write.format("starrocks") \
             .option("starrocks.table.identifier", f"{im_db_name}.{table_name}") \
             .option("starrocks.fe.http.url", f"{im_host}:8030") \
             .option("starrocks.fe.jdbc.url", f"jdbc:mysql://{im_host}:{im_port}") \

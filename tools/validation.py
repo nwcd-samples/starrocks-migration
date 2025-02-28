@@ -48,7 +48,11 @@ def compare(sr_conn, dest_conn, cmd: str, tb_metric_items, logger):
 
 
 def run():
+
     logger = get_logger("validation")
+    logger.info("")
+    logger.info("")
+    logger.info("")
     table_name_str = os.getenv("TABLE_NAME")
     metric_str = os.getenv("TABLE_METRICS")
     table_names = table_name_str.split(",")
@@ -74,7 +78,7 @@ def run():
         if item_index < task_filters_count:
             partitions = get_tasks(table_name, task_filters[item_index])
         else:
-            partitions = get_tasks(table_name, task_filters[item_index])
+            partitions = get_tasks(table_name)
         if not partitions:
             tb_cmd = f"""select "{table_name}" as name,{tb_metric_items_str}, count(*) as row_count from {table_name}"""
             stat = compare(sconn, dest, tb_cmd, tb_metric_items, logger)
