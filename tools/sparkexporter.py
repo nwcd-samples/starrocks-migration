@@ -128,9 +128,12 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             # 可能是空数据
             row_count = starrocks_df.count()
 
+
         if row_count == 0:
             # 空数据无需导出
             return ""
+    else:
+        starrocks_df = starrocks_df.load()
 
     direct_im = os.getenv("SPARK_DIRECT") == "True"
     if not direct_im:
@@ -146,10 +149,10 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         if partition:
             pt_name = partition["name"]
             local_path = local_dir + f"/{job_name}/{db_name}/{table_name}/{pt_name}/"
-            logger.info(f"[exporter]begin to {table_name} {pt_name} with {local_path}")
+            logger.info(f"[exporter]Begin to {table_name} {pt_name} with {local_path}")
         else:
             local_path = local_dir + f"/{job_name}/{db_name}/{table_name}/default/"
-            logger.info(f"[exporter]begin to {table_name} default with {local_path}")
+            logger.info(f"[exporter]Begin to {table_name} default with {local_path}")
 
         starrocks_df.coalesce(20).write \
             .option("header", "false") \
@@ -162,7 +165,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         return local_path
     else:
         im_host, im_port, im_user, im_pwd, im_db_name = get_data_source()
-        starrocks_df.write.format("starrocks") \
+        starrocks_df.coalesce(20).write.format("starrocks") \
             .option("starrocks.table.identifier", f"{im_db_name}.{table_name}") \
             .option("starrocks.fe.http.url", f"{im_host}:8030") \
             .option("starrocks.fe.jdbc.url", f"jdbc:mysql://{im_host}:{im_port}") \
@@ -175,4 +178,4 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
 def runone(job_name: str, table_name: str, logger):
     spark = get_spark(job_name, table_name, index=0)
 
-    runp(spark, job_name, table_name, "", dict(), logger)
+    return runp(spark, job_name, table_name, "", dict(), logger)

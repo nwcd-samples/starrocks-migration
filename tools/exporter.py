@@ -36,6 +36,7 @@ class EWorkerThread(threading.Thread):
                 # 从队列中获取数据
                 partition = self.deque_queue.popleft()
                 msg = sparkrun(spark, self.job_name, self.table_name, partition, logger)
+                logger.warn(f"====>send msg {msg}")
                 self.msg_queue.put(msg)
             except IndexError:
                 # 如果队列为空，退出线程
@@ -108,11 +109,11 @@ class CheckFileThread(threading.Thread):
                     current_files.add(os.path.join(root, file))
 
             for file_path in current_files:
-                logger.warn(file_path)
+                logger.info(f"[exporter][{self.job_name}]===>Begin to scan foler {file_path}")
                 s3_path = os.path.relpath(file_path, temp)
                 # 构建 S3 对象键
                 s3_key = f"{self.prefix}/{s3_path}"
-                logger.info(f"[exporter][{self.job_name}]===>begin to upload file: {file_path}\n{s3_key}!")
+                logger.info(f"[exporter][{self.job_name}]===>Begin to upload file: {file_path}\n{s3_key}!")
                 self.s3msg_queue.put((file_path, s3_key))
 
             self.s3msg_queue.put(("done", msg))
@@ -151,10 +152,10 @@ def run(job_name: str):
             partitions = get_tasks(table_name, task_filters[item_index])
         logger.info(partitions)
 
-        message_queue = queue.Queue()
+        check_queue = queue.Queue()
         s3_queue = queue.Queue()
 
-        checkfile = CheckFileThread(job_name, table_name, s3_bucket, s3_prefix, message_queue, s3_queue)
+        checkfile = CheckFileThread(job_name, table_name, s3_bucket, s3_prefix, check_queue, s3_queue)
         checkfile.start()
 
         for i in range(0, num2_threads):
@@ -162,12 +163,14 @@ def run(job_name: str):
             s3up.start()
 
         if len(partitions) == 0:
-            sparkrunone(job_name, table_name, logger)
+            local_path = sparkrunone(job_name, table_name, logger)
+            check_queue.put(local_path)
+            time.sleep(1)
         else:
             threads = list()
             data_queue = deque(partitions)
             for index in range(num_threads):
-                thread = EWorkerThread(job_name, table_name, data_queue, message_queue, index)
+                thread = EWorkerThread(job_name, table_name, data_queue, check_queue, index)
                 threads.append(thread)
                 thread.start()
 
