@@ -126,7 +126,7 @@ class CheckFileThread(threading.Thread):
 
 def run(job_name: str):
     logger.info("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-    logger.info(f"NEW　JOB BEGIN {job_name}")
+    logger.info(f"NEW JOB BEGIN {job_name}")
     logger.info("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 
     storages = os.getenv("STORAGES").split(",")

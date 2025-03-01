@@ -228,6 +228,9 @@ def clear_db(job_name: str):
         # 构造批量删除请求
         delete_requests = []
         for item in items:
+            if not item['task_name']['S'].startswith(key_prefix_str):
+                continue
+
             print(f"[ClearDB]=======>WILL DELETE {item['task_name']['S']}")
             if "task_name" in item:
                 delete_requests.append({
