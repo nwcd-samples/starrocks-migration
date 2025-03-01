@@ -71,7 +71,12 @@ def run(spark, job_name: str, table_name: str, partition, logger):
 
     if partition["ptype"] == "list":
         ptv = partition['start']
-        filter_str = f"{partition['key']}={ptv}"
+        ptvs = ptv.split(",")
+        if len(ptvs) == 1:
+            filter_str = f"{partition['key']} = {ptv}"
+        else:
+            filter_str = f"{partition['key']} in ({ptv})"
+
     else:
         ptv = partition['start']
         ptv2 = partition['end']

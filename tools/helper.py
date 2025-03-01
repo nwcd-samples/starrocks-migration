@@ -37,8 +37,11 @@ def pick_range_key(partition_range_str):
 
 def pick_list_key(partition_str: str):
     index1 = partition_str.find("((")
-    index2 = partition_str.find("))")
-    return partition_str[index1 + 2:index2]
+    if index1 == 0:
+        index2 = partition_str.find("))")
+        return partition_str[index1 + 2:index2]
+    else:
+        return partition_str[1:-1]
 
 
 def split_task_filter(filter_str: str) -> list:
