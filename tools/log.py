@@ -22,7 +22,7 @@ def get_logger(logger_name: str):
     logger.addHandler(console_handler)
 
     # 定义日志格式
-    formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+    formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] [%(module)s:%(lineno)d] %(message)s')
     handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
     return logger
