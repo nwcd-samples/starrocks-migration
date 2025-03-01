@@ -39,11 +39,11 @@ def main():
 
     parser_sqs = subparsers.add_parser("clear", help="情况SQS")
     parser_sqs.add_argument("--env", type=str, help="配置文件地址", default=".env")
-    parser_sqs.add_argument("--job", type=str, help="启动作业名称",default="")
+    parser_sqs.add_argument("--job", type=str, help="启动作业名称")
 
     parser_db = subparsers.add_parser("cleardb", help="清理记录状态的DB")
     parser_db.add_argument("--env", type=str, help="配置文件地址", default=".env")
-    parser_db.add_argument("--job", type=str, help="启动作业名称",default="")
+    parser_db.add_argument("--job", type=str, help="启动作业名称")
 
     args = parser.parse_args()
     if args.command == "export":
@@ -85,7 +85,7 @@ def main():
         conf.load_env(env_path)
         job_name = args.job
         clear_sqs(job_name)
-    elif args.command == "db":
+    elif args.command == "cleardb":
         env_path = args.env
         conf.load_env(env_path)
         job_name = args.job
