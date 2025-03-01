@@ -93,6 +93,9 @@ class CheckFileThread(threading.Thread):
 
         while True:
             msg = self.msg_queue.get()
+            if msg == "":
+                # 当前分区无数据
+                continue
             if msg == "stop":
                 return
 

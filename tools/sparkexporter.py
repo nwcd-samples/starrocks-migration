@@ -84,8 +84,6 @@ def run(spark, job_name: str, table_name: str, partition, logger):
     if data_filter:
         filter_str = f"{filter_str} and {data_filter}"
 
-
-
     logger.info(f"[exporter][{job_name}]===>BEGIN RUN {table_name}==>{pt_name} with {filter_str}!")
     try:
         output = runp(spark, job_name, table_name, filter_str, partition, logger)
@@ -114,7 +112,6 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.exec.mem.limit", 4294967296) \
         .option("starrocks.batch.size", 10000)
-
     if partition and filter_str:
         pt_name = partition["name"]
         logger.info(f"begin partition {pt_name} with {filter_str}")
@@ -128,14 +125,15 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             # 可能是空数据
             row_count = starrocks_df.count()
 
-
         if row_count == 0:
+            logger.warn(f"[exporter]NOT DATA in {table_name} {pt_name}")
             # 空数据无需导出
             return ""
     else:
         starrocks_df = starrocks_df.load()
 
     direct_im = os.getenv("SPARK_DIRECT") == "True"
+
     if not direct_im:
         if storage.startswith("s3://"):
             storage = storage.replace("s3://", "s3a://")
