@@ -4,7 +4,7 @@ import json
 from .mysql import get_conn
 
 
-def send_task_done_notification(job_name: str):
+def send_task_done_notification(job_name: str, count=1):
     aws_region = os.getenv("AWS_REGION")
     k_info = {
         "task_name": "ALL TASK DONE",
@@ -17,8 +17,7 @@ def send_task_done_notification(job_name: str):
     queue_url = os.getenv("TASK_QUEUE")
     queue_endpoint = os.getenv("TASK_QUEUE_ENDPOINT")
     sqs = boto3.client('sqs', region_name=aws_region, endpoint_url=f"https://{queue_endpoint}")
-    importer_count = int(os.getenv("IMPORT_CONCURRENCY"))
-    for i in range(0, importer_count):
+    for i in range(0, count):
         sqs.send_message(
             QueueUrl=queue_url,
             MessageBody=str_info,
@@ -86,6 +85,7 @@ def get_tasks(table_name: str, task_filter: str = "") -> list:
     partitions = list()
     with conn.cursor() as cursor:
         sql = str(cmd_partition)
+
         cursor.execute(sql)
         conn.commit()
         rows = cursor.fetchall()

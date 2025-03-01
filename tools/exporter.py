@@ -192,6 +192,5 @@ def run(job_name: str):
         logger.info(f"[exporter][{job_name}]===>ALL EXPORT TASK IN {table_name} DONE !!! bingo!")
 
     num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
-    for i in range(0, num_import_threads):
-        send_task_done_notification(job_name)
+    send_task_done_notification(job_name, num_import_threads)
     logger.info(f"[exporter][{job_name}]===>{job_name} bingo!")
