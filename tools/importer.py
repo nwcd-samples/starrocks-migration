@@ -146,12 +146,9 @@ class IWorkerThread(threading.Thread):
                     # s3://eu-test-starrocks/eu-test-starrocks-2025021203/sungrow/fact_organization_kpi_year/p2018/
                     parts = utask_name.split("/")
                     table_name = parts[6]
-                    file_path = utask_name
-                    if ak == "" or sk == "":
-                        file_path = utask_name.replace("s3://", "s3a://")
+                    file_path = utask_name.replace("s3://", "s3a://")
 
                     if using_spark:
-                        logger.warn(file_path)
                         is_ok, msg = sparkrun(spark, self.job_name, table_name, file_path, logger)
                     else:
                         is_ok, msg = import_task(self.job_name, db_name, table_name, file_path, aws_region, ak, sk)

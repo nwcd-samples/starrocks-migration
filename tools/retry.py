@@ -28,9 +28,12 @@ class RetryFactory:
     def __init__(self, job_name: str):
         self.job_name = job_name
 
-    def run(self, action: RetryAction, **kwargs):
+    def run(self, action: RetryAction, force=False, **kwargs):
         if action == RetryAction.IMPORT_TASK:
-            items = self._get_failed_import_tasks()
+            if force:
+                items = self._get_job_import_tasks()
+            else:
+                items = self._get_failed_import_tasks()
             self._retry_import_tasks(items)
             return
 
@@ -74,6 +77,14 @@ class RetryFactory:
 
         key_prefix_str = f"{storage}/{self.job_name}"
         filter_str = "IMPORTED SUCCESSFULLY"
+        return self._get_records(key_prefix_str, filter_str)
+
+    def _get_job_import_tasks(self):
+        storages = os.getenv("STORAGES").split(",")
+        storage = storages[-1]
+
+        key_prefix_str = f"{storage}/{self.job_name}"
+        filter_str = ""
         return self._get_records(key_prefix_str, filter_str)
 
     def _get_failed_import_partitions(self, partition_name: str):

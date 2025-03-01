@@ -27,6 +27,7 @@ def main():
 
     parser_retry = subparsers.add_parser("retry", help="重试")
     parser_retry.add_argument("--job", type=str, help="启动作业名称")
+    parser_retry.add_argument("--force", type=bool, help="强制从新把指定任务的数据重新加载", default=False)
     parser_retry.add_argument("--type", type=str, help="重试的类型,目前支持如下值: [import export] , 默认 import",
                               default="import")
     parser_retry.add_argument("--content", type=str,
@@ -67,12 +68,13 @@ def main():
         env_path = args.env
         job_name = args.job
         retype = args.type
+        force = args.force
         content = args.content
         conf.load_env(env_path)
         redo = RetryFactory(job_name)
         if retype == "import":
             if content == "files":
-                redo.run(RetryAction.IMPORT_TASK)
+                redo.run(RetryAction.IMPORT_TASK, force=force)
             else:
                 redo.run(RetryAction.IMPORT_PARTITIONS, partition_name=content)
 
