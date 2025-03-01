@@ -7,6 +7,7 @@ import argparse
 import os
 import time
 import boto3
+import json
 
 
 def clear():
@@ -14,6 +15,7 @@ def clear():
 
     queue_url = os.getenv("TASK_QUEUE")
     sqs = boto3.client('sqs', region_name=aws_region)
+    stat = dict()
     while True:
         response = sqs.receive_message(
             QueueUrl=queue_url,
@@ -30,10 +32,20 @@ def clear():
             body_str = msg["Body"]
             print(body_str)
             receipt_handle = msg["ReceiptHandle"]
+            body = json.loads(body_str)
+            task_name = body['task_name']
+            if task_name == "ALL TASK DONE":
+                item_job_name = body['status']
+                if item_job_name not in stat:
+                    stat[item_job_name]=1
+                else:
+                    stat[item_job_name]+=1
+
             ok = sqs.delete_message(
                 QueueUrl=queue_url,
                 ReceiptHandle=receipt_handle
             )
+    print(stat)
 
 
 def main():
