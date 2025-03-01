@@ -34,6 +34,8 @@ class RetryFactory:
                 items = self._get_job_import_tasks()
             else:
                 items = self._get_failed_import_tasks()
+
+            print(items)
             self._retry_import_tasks(items)
             return
 
@@ -75,7 +77,7 @@ class RetryFactory:
         storages = os.getenv("STORAGES").split(",")
         storage = storages[-1]
 
-        key_prefix_str = f"{storage}/{self.job_name}"
+        key_prefix_str = os.path.join(storage, self.job_name)
         filter_str = "IMPORTED SUCCESSFULLY"
         return self._get_records(key_prefix_str, filter_str)
 
@@ -83,7 +85,8 @@ class RetryFactory:
         storages = os.getenv("STORAGES").split(",")
         storage = storages[-1]
 
-        key_prefix_str = f"{storage}/{self.job_name}"
+        key_prefix_str = os.path.join(storage, self.job_name)
+
         filter_str = ""
         return self._get_records(key_prefix_str, filter_str)
 
@@ -94,11 +97,9 @@ class RetryFactory:
         tb_name = os.getenv("TABLE_NAME")
 
         # 格式为 s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
-        if storage.endswith("/"):
-            key_prefix_str = f"{storage}{self.job_name}/{db_name}/{tb_name}/{partition_name}"
-        else:
-            key_prefix_str = f"{storage}/{self.job_name}/{db_name}/{tb_name}/{partition_name}"
-        print(key_prefix_str)
+
+        key_prefix_str = os.path.join(storage, self.job_name, db_name, tb_name, partition_name)
+
         filter_str = ""
         return self._get_records(key_prefix_str, filter_str)
 
@@ -133,7 +134,8 @@ class RetryFactory:
             if filter_str == "":
                 scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix)
             else:
-                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(filter_str)
+                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(
+                    filter_str)
 
             response = table.scan(**scan_kwargs)
             return response
