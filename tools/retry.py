@@ -66,7 +66,7 @@ class RetryFactory:
             )
 
         num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
-        send_task_done_notification(job_name, num_import_threads)
+        send_task_done_notification(self.job_name, num_import_threads)
 
     def _get_failed_import_tasks(self):
         storages = os.getenv("STORAGES").split(",")
@@ -88,8 +88,8 @@ class RetryFactory:
         else:
             key_prefix_str = f"{storage}/{self.job_name}/{db_name}/{tb_name}/{partition_name}"
         print(key_prefix_str)
-        filter = ""
-        return self._get_records(key_prefix_str, filter)
+        filter_str = ""
+        return self._get_records(key_prefix_str, filter_str)
 
     def _get_failed_export_tasks(self):
         STORAGES = os.getenv("STORAGES").split(",")
@@ -99,16 +99,16 @@ class RetryFactory:
         filter = "IMPORTED SUCESSFULLY"
         pass
 
-    def _get_records(self, prefix: str, filter: str):
+    def _get_records(self, prefix: str, filter_str: str):
 
-        AWS_REGION = os.getenv("AWS_REGION")
-        RECORDER = os.getenv("RECORDER")
+        aws_region = os.getenv("AWS_REGION")
+        recoder = os.getenv("RECORDER")
 
         # 初始化boto3的DynamoDB服务客户端
-        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)  # 替换为你的区域
+        dynamodb = boto3.resource('dynamodb', region_name=aws_region)  # 替换为你的区域
 
         # 指定你的DynamoDB表
-        table = dynamodb.Table(RECORDER)
+        table = dynamodb.Table(recoder)
 
         # 计算总的段数，这取决于你的表的大小和需求
         total_segments = 10  # 例如，你可以设置为10
@@ -119,10 +119,10 @@ class RetryFactory:
                 'Segment': segment,
                 'TotalSegments': total_segments
             }
-            if filter == "":
+            if filter_str == "":
                 scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix)
             else:
-                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(filter)
+                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(filter_str)
 
             response = table.scan(**scan_kwargs)
             return response

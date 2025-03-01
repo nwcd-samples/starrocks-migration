@@ -2,6 +2,8 @@ import os
 import boto3
 import json
 from .mysql import get_conn
+from boto3.dynamodb.conditions import Key, Attr
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
 
 def send_task_done_notification(job_name: str, count=1):
@@ -142,3 +144,113 @@ def get_tasks(table_name: str, task_filter: str = "") -> list:
 
     conn.close()
     return partitions
+
+
+def clear_sqs(job: str = ""):
+    aws_region = os.getenv("AWS_REGION")
+
+    queue_url = os.getenv("TASK_QUEUE")
+    sqs = boto3.client('sqs', region_name=aws_region)
+    stat = dict()
+    while True:
+        response = sqs.receive_message(
+            QueueUrl=queue_url,
+            VisibilityTimeout=1
+        )
+        if "Messages" not in response:
+            break
+
+        messages = response["Messages"]
+        if len(messages) == 0:
+            break
+
+        for msg in messages:
+            body_str = msg["Body"]
+            receipt_handle = msg["ReceiptHandle"]
+            body = json.loads(body_str)
+            task_name = body['task_name']
+            if task_name == "ALL TASK DONE":
+                item_job_name = body['status']
+                if item_job_name not in stat:
+                    stat[item_job_name] = 1
+                else:
+                    stat[item_job_name] += 1
+            else:
+                parts = task_name.split("/")
+                item_job_name = parts[4]
+
+            if not job or item_job_name == job:
+                print(f"Clear SQS message in {body_str}")
+                sqs.delete_message(
+                    QueueUrl=queue_url,
+                    ReceiptHandle=receipt_handle
+                )
+    print(stat)
+
+
+def clear_db(job_name: str):
+    table_name = os.getenv("RECORDER")
+    # 创建 DynamoDB 客户端
+    aws_region = os.getenv("AWS_REGION")
+    dynamodb = boto3.client('dynamodb', region_name=aws_region)
+
+    storages = os.getenv("STORAGES").split(",")
+    storage = storages[-1]
+
+    # 格式为 s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
+    if storage.endswith("/"):
+        key_prefix_str = f"{storage}{job_name}"
+    else:
+        key_prefix_str = f"{storage}/{job_name}"
+
+    try:
+        # 扫描表中的所有数据
+        response = dynamodb.scan(
+            TableName=table_name,
+            Select='ALL_ATTRIBUTES'
+        )
+
+        # 获取所有数据项
+        items = response.get('Items', [])
+        while 'LastEvaluatedKey' in response:
+            response = dynamodb.scan(
+                TableName=table_name,
+                Select='ALL_ATTRIBUTES',
+                ExclusiveStartKey=response['LastEvaluatedKey'],
+                FilterExpression=Key('task_name').begins_with(key_prefix_str)
+            )
+            items.extend(response.get('Items', []))
+
+        if not items:
+            print(f"表 {table_name} 中没有数据。")
+            return
+
+        # 构造批量删除请求
+        delete_requests = []
+        for item in items:
+            print(f"[ClearDB]=======>WILL DELETE {item['task_name']['S']}")
+            if "task_name" in item:
+                delete_requests.append({
+                    'DeleteRequest': {
+                        'Key': {'task_name': {'S': item['task_name']['S']}}
+                    }
+                })
+
+        # 每次最多删除 25 条记录
+        batch_size = 25
+        for i in range(0, len(delete_requests), batch_size):
+            batch = delete_requests[i:i + batch_size]
+            dynamodb.batch_write_item(
+                RequestItems={
+                    table_name: batch
+                }
+            )
+
+        print(f"已删除表 {job_name} 中的所有数据。")
+
+    except NoCredentialsError:
+        print("未找到 AWS 凭证。请配置 AWS 凭证。")
+    except PartialCredentialsError:
+        print("AWS 凭证不完整。请检查配置。")
+    except Exception as e:
+        print(f"发生错误: {e}")

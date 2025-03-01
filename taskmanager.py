@@ -1,51 +1,10 @@
 from tools import conf
 from tools import exporter, importer, validation
 from tools.retry import RetryFactory, RetryAction
-from tools.helper import send_task_done_notification
+from tools.helper import clear_db, clear_sqs
 from tools.sync import Sync
 import argparse
 import os
-import time
-import boto3
-import json
-
-
-def clear():
-    aws_region = os.getenv("AWS_REGION")
-
-    queue_url = os.getenv("TASK_QUEUE")
-    sqs = boto3.client('sqs', region_name=aws_region)
-    stat = dict()
-    while True:
-        response = sqs.receive_message(
-            QueueUrl=queue_url,
-            VisibilityTimeout=1
-        )
-        if "Messages" not in response:
-            break
-
-        messages = response["Messages"]
-        if len(messages) == 0:
-            break
-
-        for msg in messages:
-            body_str = msg["Body"]
-            print(body_str)
-            receipt_handle = msg["ReceiptHandle"]
-            body = json.loads(body_str)
-            task_name = body['task_name']
-            if task_name == "ALL TASK DONE":
-                item_job_name = body['status']
-                if item_job_name not in stat:
-                    stat[item_job_name]=1
-                else:
-                    stat[item_job_name]+=1
-
-            ok = sqs.delete_message(
-                QueueUrl=queue_url,
-                ReceiptHandle=receipt_handle
-            )
-    print(stat)
 
 
 def main():
@@ -80,6 +39,11 @@ def main():
 
     parser_sqs = subparsers.add_parser("clear", help="情况SQS")
     parser_sqs.add_argument("--env", type=str, help="配置文件地址", default=".env")
+    parser_sqs.add_argument("--job", type=str, help="启动作业名称",default="")
+
+    parser_db = subparsers.add_parser("cleardb", help="清理记录状态的DB")
+    parser_db.add_argument("--env", type=str, help="配置文件地址", default=".env")
+    parser_db.add_argument("--job", type=str, help="启动作业名称",default="")
 
     args = parser.parse_args()
     if args.command == "export":
@@ -105,7 +69,6 @@ def main():
         retype = args.type
         content = args.content
         conf.load_env(env_path)
-        table_names = os.getenv("TABLE_NAME").split(",")
         redo = RetryFactory(job_name)
         if retype == "import":
             if content == "files":
@@ -120,7 +83,13 @@ def main():
     elif args.command == "clear":
         env_path = args.env
         conf.load_env(env_path)
-        clear()
+        job_name = args.job
+        clear_sqs(job_name)
+    elif args.command == "db":
+        env_path = args.env
+        conf.load_env(env_path)
+        job_name = args.job
+        clear_db(job_name)
     else:
         parser.print_help()
 
