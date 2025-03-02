@@ -117,13 +117,14 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.exec.mem.limit", 4294967296) \
         .option("starrocks.batch.size", 10000)
-    if partition and filter_str:
-        pt_name = partition["name"]
-        logger.info(f"begin partition {pt_name} with {filter_str}")
+
+    if filter_str:
+        logger.warn(f"[exporter] filter data in {table_name} {filter_str}")
         starrocks_df = starrocks_df.option("starrocks.filter.query", filter_str)
 
+    if partition :
+        pt_name = partition["name"]
         starrocks_df = starrocks_df.load()
-
         row_count = partition["rowcount"]
         # 统计得来的数字，不准确
         if row_count < 1000:
@@ -183,5 +184,5 @@ def runone(job_name: str, table_name: str, logger):
     filter_str = ""
     data_filter = find_data_filter_by_table(table_name)
     if data_filter:
-        filter_str = f"{filter_str} and {data_filter}"
+        filter_str = data_filter
     return runp(spark, job_name, table_name, filter_str, dict(), logger)
