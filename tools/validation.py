@@ -38,17 +38,22 @@ def compare(sr_conn, dest_conn, cmd: str, tb_metric_items, logger):
         logger.error(ex)
 
     for key in source_values:
-        if source_values[key] != target_values[key]:
-            logger.error(f"NOT MATCH {key}==>{source_values[key]} != {target_values[key]}")
-            stat.append(key)
+        if key in target_values:
+            if source_values[key] != target_values[key]:
+                logger.error(f"NOT MATCH {key}==>{source_values[key]} != {target_values[key]}")
+                stat.append(key)
+
+            else:
+                logger.info(f"MATCH {key}==>{source_values[key]} == {target_values[key]}")
+
         else:
-            logger.info(f"MATCH {key}==>{source_values[key]} == {target_values[key]}")
+            logger.error(f"NOT MATCH {key}==> TASK LOST {key}")
+            stat.append(key)
 
     return stat
 
 
 def run():
-
     logger = get_logger("validation")
     logger.info("")
     logger.info("")

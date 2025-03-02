@@ -32,10 +32,10 @@ class RetryFactory:
         if action == RetryAction.IMPORT_TASK:
             if force:
                 items = self._get_job_import_tasks()
+                print(items)
             else:
                 items = self._get_failed_import_tasks()
 
-            print(items)
             self._retry_import_tasks(items)
             return
 
