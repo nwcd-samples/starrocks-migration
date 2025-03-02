@@ -248,7 +248,10 @@ def import_task(job_name, db_name, table_name, file_path: str, aws_region: str, 
                     logger.info(f"[importer][{job_name}]===>Succeed in importing {res}")
                     return True, res
                 elif status == 'CANCELLED':
-                    logger.error(f"[importer][{job_name}]===>Failed to import {res}")
+                    if res.endswith("all partitions have no load data"):
+                        logger.warn(f"[importer][{job_name}]===>Failed to import {res}")
+                    else:
+                        logger.error(f"[importer][{job_name}]===>Failed to import {res}")
                     return False, res
                 else:
                     time.sleep(2)
