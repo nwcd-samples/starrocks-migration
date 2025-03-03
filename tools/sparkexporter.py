@@ -168,7 +168,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         time.sleep(2)
         return local_path
     else:
-        im_host, im_port, im_user, im_pwd, im_db_name = get_data_source()
+        im_host, im_port, im_user, im_pwd, im_db_name = get_data_source("target")
         starrocks_df.coalesce(10).write.format("starrocks") \
             .option("starrocks.table.identifier", f"{im_db_name}.{table_name}") \
             .option("starrocks.fe.http.url", f"{im_host}:8030") \
@@ -177,6 +177,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
             .option("starrocks.password", f"{im_pwd}") \
             .mode("append") \
             .save()
+        return ""
 
 
 def runone(job_name: str, table_name: str, logger):
