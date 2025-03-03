@@ -191,11 +191,33 @@ def clear_sqs(job: str = ""):
     print(stat)
 
 
+# 扫描操作
+def scan_table(table, segment, total_segments, key_prefix, filter_str=""):
+    scan_kwargs = {
+        'Segment': segment,
+        'TotalSegments': total_segments
+    }
+    if filter_str == "":
+        scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix)
+    else:
+        scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(
+            filter_str)
+
+    response = table.scan(**scan_kwargs)
+    return response
+
+
 def clear_db(job_name: str):
     table_name = os.getenv("RECORDER")
     # 创建 DynamoDB 客户端
     aws_region = os.getenv("AWS_REGION")
     dynamodb = boto3.client('dynamodb', region_name=aws_region)
+
+    # 初始化boto3的DynamoDB服务客户端
+    dynamodbs = boto3.resource('dynamodb', region_name=aws_region)  # 替换为你的区域
+
+    # 指定你的DynamoDB表
+    table = dynamodbs.Table(table_name)
 
     storages = os.getenv("STORAGES").split(",")
     storage = storages[-1]
@@ -205,54 +227,41 @@ def clear_db(job_name: str):
         key_prefix_str = f"{storage}{job_name}"
     else:
         key_prefix_str = f"{storage}/{job_name}"
-
+    total_segments = 10
     try:
-        # 扫描表中的所有数据
-        response = dynamodb.scan(
-            TableName=table_name,
-            Select='ALL_ATTRIBUTES'
-        )
 
-        # 获取所有数据项
-        items = response.get('Items', [])
-        while 'LastEvaluatedKey' in response:
-            response = dynamodb.scan(
-                TableName=table_name,
-                Select='ALL_ATTRIBUTES',
-                ExclusiveStartKey=response['LastEvaluatedKey'],
-                FilterExpression=Key('task_name').begins_with(key_prefix_str)
-            )
-            items.extend(response.get('Items', []))
+        # 并行执行扫描
+        results = []
+        for segment in range(0, total_segments):
+            results.append(scan_table(table, segment, total_segments, key_prefix_str))
 
-        if not items:
-            print(f"表 {table_name} 中没有数据。")
-            return
+        # 合并结果
+
+        all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
 
         # 构造批量删除请求
         delete_requests = []
-        for item in items:
-            if not item['task_name']['S'].startswith(key_prefix_str):
-                continue
-
-            print(f"[ClearDB]=======>WILL DELETE {item['task_name']['S']}")
-            if "task_name" in item:
-                delete_requests.append({
-                    'DeleteRequest': {
-                        'Key': {'task_name': {'S': item['task_name']['S']}}
-                    }
-                })
+        for item in all_items:
+            print(f"[ClearDB]=======>WILL DELETE {item}")
+            delete_requests.append({
+                'DeleteRequest': {
+                    'Key': {'task_name': {'S': item}}
+                }
+            })
 
         # 每次最多删除 25 条记录
         batch_size = 25
         for i in range(0, len(delete_requests), batch_size):
+            print("Begin deletes....")
             batch = delete_requests[i:i + batch_size]
-            dynamodb.batch_write_item(
+            ok = dynamodb.batch_write_item(
                 RequestItems={
                     table_name: batch
                 }
             )
+            print(ok)
 
-        print(f"已删除表 {job_name} 中的所有数据。")
+        print(f"已删除表 {job_name} {len(all_items)}中的所有数据。")
 
     except NoCredentialsError:
         print("未找到 AWS 凭证。请配置 AWS 凭证。")
