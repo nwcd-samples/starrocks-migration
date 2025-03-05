@@ -45,7 +45,7 @@ def main():
     parser_db = subparsers.add_parser("db", help="清理记录状态的DB")
     parser_db.add_argument("--env", type=str, help="配置文件地址", default=".env")
     parser_db.add_argument("--job", type=str, help="启动作业名称")
-    parser_db.add_argument("--type", type=str, help="查询db状态或者删除job 的状态记录: [scan clear] , 默认 scan")
+    parser_db.add_argument("--type", type=str, help="查询db状态或者删除job 的状态记录: [scan clear] , 默认 scan", default="scan")
 
     args = parser.parse_args()
     if args.command == "export":
