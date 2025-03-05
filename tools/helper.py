@@ -174,13 +174,14 @@ def clear_sqs(job: str = ""):
             task_name = body['task_name']
             if task_name == "ALL TASK DONE":
                 item_job_name = body['status']
-                if item_job_name not in stat:
-                    stat[item_job_name] = 1
-                else:
-                    stat[item_job_name] += 1
             else:
                 parts = task_name.split("/")
                 item_job_name = parts[4]
+
+            if item_job_name not in stat:
+                stat[item_job_name] = 1
+            else:
+                stat[item_job_name] += 1
 
             if not job or item_job_name == job:
                 print(f"Clear SQS message in {body_str}")
