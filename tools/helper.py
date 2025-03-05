@@ -261,7 +261,7 @@ def db(job_name: str, delete=False):
                 )
                 print(ok)
 
-            print(f"已删除表 {job_name} {len(all_items)}中的所有数据。")
+            print(f"已删除表 {job_name} 中，总计{len(all_items)}条的所有数据。")
         else:
             total_count = 0
             for item in results:
