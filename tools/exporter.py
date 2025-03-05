@@ -71,7 +71,7 @@ class UploadThread(threading.Thread):
                     logger.info(f"[exporter][{self.job_name}]===>{success_count} success upload file: {file_path}!")
                 except Exception as ex:
                     failed_count += 1
-                    logger.error(f"[exporter][{self.job_name}]===>{failed_count} failed to upload file: {file_path}!")
+                    logger.error(f"[exporter][{self.job_name}]===>{failed_count} failed to upload file: {file_path} with error {ex}!")
 
 
 class CheckFileThread(threading.Thread):
