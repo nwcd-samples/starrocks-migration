@@ -210,6 +210,7 @@ def import_task(job_name, db_name, table_name, file_path: str, aws_region: str, 
                 (
                     DATA INFILE("{file_path}")
                     INTO TABLE {table_name}
+                    (id, ps_id, date_id, uuid, ps_key, p82202, p82019, p82020, p82015, p82030, p82031, p82024, p82025, p82026, p82027, p82028, p82029, p82023, p82417, p82033, p82036, p82037, p82032)
                 )
                 WITH BROKER
                 (
