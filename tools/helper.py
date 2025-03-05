@@ -207,7 +207,7 @@ def scan_table(table, segment, total_segments, key_prefix, filter_str=""):
     return response
 
 
-def clear_db(job_name: str):
+def db(job_name: str,delete=False):
     table_name = os.getenv("RECORDER")
     # 创建 DynamoDB 客户端
     aws_region = os.getenv("AWS_REGION")
@@ -236,33 +236,35 @@ def clear_db(job_name: str):
             results.append(scan_table(table, segment, total_segments, key_prefix_str))
 
         # 合并结果
+        if delete:
+            all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
 
-        all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
+            # 构造批量删除请求
+            delete_requests = []
+            for item in all_items:
+                print(f"[ClearDB]=======>WILL DELETE {item}")
+                delete_requests.append({
+                    'DeleteRequest': {
+                        'Key': {'task_name': {'S': item}}
+                    }
+                })
 
-        # 构造批量删除请求
-        delete_requests = []
-        for item in all_items:
-            print(f"[ClearDB]=======>WILL DELETE {item}")
-            delete_requests.append({
-                'DeleteRequest': {
-                    'Key': {'task_name': {'S': item}}
-                }
-            })
+            # 每次最多删除 25 条记录
+            batch_size = 25
+            for i in range(0, len(delete_requests), batch_size):
+                print("Begin deletes....")
+                batch = delete_requests[i:i + batch_size]
+                ok = dynamodb.batch_write_item(
+                    RequestItems={
+                        table_name: batch
+                    }
+                )
+                print(ok)
 
-        # 每次最多删除 25 条记录
-        batch_size = 25
-        for i in range(0, len(delete_requests), batch_size):
-            print("Begin deletes....")
-            batch = delete_requests[i:i + batch_size]
-            ok = dynamodb.batch_write_item(
-                RequestItems={
-                    table_name: batch
-                }
-            )
-            print(ok)
-
-        print(f"已删除表 {job_name} {len(all_items)}中的所有数据。")
-
+            print(f"已删除表 {job_name} {len(all_items)}中的所有数据。")
+        else:
+            for item in results:
+                print(item)
     except NoCredentialsError:
         print("未找到 AWS 凭证。请配置 AWS 凭证。")
     except PartialCredentialsError:

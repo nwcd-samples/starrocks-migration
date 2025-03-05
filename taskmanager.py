@@ -1,7 +1,7 @@
 from tools import conf
 from tools import exporter, importer, validation
 from tools.retry import RetryFactory, RetryAction
-from tools.helper import clear_db, clear_sqs
+from tools.helper import db, clear_sqs
 from tools.sync import Sync
 import argparse
 import os
@@ -42,9 +42,10 @@ def main():
     parser_sqs.add_argument("--env", type=str, help="配置文件地址", default=".env")
     parser_sqs.add_argument("--job", type=str, help="启动作业名称")
 
-    parser_db = subparsers.add_parser("cleardb", help="清理记录状态的DB")
+    parser_db = subparsers.add_parser("db", help="清理记录状态的DB")
     parser_db.add_argument("--env", type=str, help="配置文件地址", default=".env")
     parser_db.add_argument("--job", type=str, help="启动作业名称")
+    parser_db.add_argument("--type", type=str, help="查询db状态或者删除job 的状态记录: [scan clear] , 默认 scan")
 
     args = parser.parse_args()
     if args.command == "export":
@@ -87,11 +88,14 @@ def main():
         conf.load_env(env_path)
         job_name = args.job
         clear_sqs(job_name)
-    elif args.command == "cleardb":
+    elif args.command == "db":
         env_path = args.env
         conf.load_env(env_path)
         job_name = args.job
-        clear_db(job_name)
+        if args.type == "clear":
+            db(job_name, delete=True)
+        else:
+            db(job_name)
     else:
         parser.print_help()
 
