@@ -182,7 +182,7 @@ def clear_sqs(job: str = ""):
                 stat[item_job_name] = 1
             else:
                 stat[item_job_name] += 1
-
+            print(body_str)
             if not job or item_job_name == job:
                 print(f"Clear SQS message in {body_str}")
                 sqs.delete_message(
