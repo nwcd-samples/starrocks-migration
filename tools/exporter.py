@@ -71,7 +71,8 @@ class UploadThread(threading.Thread):
                     logger.info(f"[exporter][{self.job_name}]===>{success_count} success upload file: {file_path}!")
                 except Exception as ex:
                     failed_count += 1
-                    logger.error(f"[exporter][{self.job_name}]===>{failed_count} failed to upload file: {file_path} with error {ex}!")
+                    logger.error(
+                        f"[exporter][{self.job_name}]===>{failed_count} failed to upload file: {file_path} with error {ex}!")
 
 
 class CheckFileThread(threading.Thread):
@@ -181,11 +182,17 @@ def run(job_name: str):
             for thread in threads:
                 thread.join()
 
+        check_empty = 0
         while True:
             remaining_messages = s3_queue.qsize()
             if remaining_messages == 0:
+                check_empty += 1
+            else:
+                check_empty = 0
+            # 连续60次都是空，才认为队列完全清空了
+            if check_empty > 60:
                 break
-            time.sleep(5)
+            time.sleep(1)
 
         time.sleep(10)
 
