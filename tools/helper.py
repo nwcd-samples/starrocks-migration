@@ -207,7 +207,7 @@ def scan_table(table, segment, total_segments, key_prefix, filter_str=""):
     return response
 
 
-def db(job_name: str,delete=False):
+def db(job_name: str, delete=False):
     table_name = os.getenv("RECORDER")
     # 创建 DynamoDB 客户端
     aws_region = os.getenv("AWS_REGION")
@@ -263,8 +263,11 @@ def db(job_name: str,delete=False):
 
             print(f"已删除表 {job_name} {len(all_items)}中的所有数据。")
         else:
+            total_count = 0
             for item in results:
+                total_count += item['Count']
                 print(item)
+            print(f"总计 {total_count} 条")
     except NoCredentialsError:
         print("未找到 AWS 凭证。请配置 AWS 凭证。")
     except PartialCredentialsError:
