@@ -111,40 +111,26 @@ class RetryFactory:
         filter = "IMPORTED SUCESSFULLY"
         pass
 
-    def _get_records(self, prefix: str, filter_str: str):
-
+    def _get_records(prefix: str, filter_str: str) -> list:
         aws_region = os.getenv("AWS_REGION")
-        recoder = os.getenv("RECORDER")
+        recorder = os.getenv("RECORDER")
+        dynamodb = boto3.resource("dynamodb", region_name=aws_region)
+        table = dynamodb.Table(recorder)
+        all_items = []
 
-        # 初始化boto3的DynamoDB服务客户端
-        dynamodb = boto3.resource('dynamodb', region_name=aws_region)  # 替换为你的区域
+        scan_kwargs = {
+            "FilterExpression": Attr("task_name").begins_with(prefix)
+        }
 
-        # 指定你的DynamoDB表
-        table = dynamodb.Table(recoder)
+        if filter_str:
+            scan_kwargs["FilterExpression"] &= Attr("status").ne(filter_str)
 
-        # 计算总的段数，这取决于你的表的大小和需求
-        total_segments = 10  # 例如，你可以设置为10
-
-        # 扫描操作
-        def scan_table(segment, total_segments, key_prefix):
-            scan_kwargs = {
-                'Segment': segment,
-                'TotalSegments': total_segments
-            }
-            if filter_str == "":
-                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix)
-            else:
-                scan_kwargs['FilterExpression'] = Key('task_name').begins_with(key_prefix) & Attr('status').ne(
-                    filter_str)
-
+        while True:
             response = table.scan(**scan_kwargs)
-            return response
+            all_items.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            scan_kwargs["ExclusiveStartKey"] = last_key
 
-        # 并行执行扫描
-        results = []
-        for segment in range(0, total_segments):
-            results.append(scan_table(segment, total_segments, prefix))
-
-        # 合并结果
-        all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
-        return all_items
+        return [item["task_name"] for item in all_items]
