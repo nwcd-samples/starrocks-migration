@@ -32,7 +32,6 @@ class RetryFactory:
         if action == RetryAction.IMPORT_TASK:
             if force:
                 items = self._get_job_import_tasks()
-                print(items)
             else:
                 items = self._get_failed_import_tasks()
 
@@ -70,6 +69,7 @@ class RetryFactory:
                 DelaySeconds=0
             )
 
+        print(f"retry total {len(tasks)} tasks")
         num_import_threads = int(os.getenv("IMPORT_CONCURRENCY"))
         send_task_done_notification(self.job_name, num_import_threads)
 
