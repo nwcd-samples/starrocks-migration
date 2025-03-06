@@ -34,6 +34,11 @@ class EWorkerThread(threading.Thread):
             try:
                 # 从队列中获取数据
                 table_name, partition = self.deque_queue.get()
+                if table_name == "task_done_a0" and not partition:
+                    logger.info(
+                        f"[exporter][{self.job_name}]===>Thread {self.index}: No more data to process. Exiting.")
+                    break
+
                 if partition:
                     msg = sparkrun(spark, self.job_name, table_name, partition, logger)
                 else:
@@ -188,6 +193,7 @@ def run(job_name: str):
 
     # 等待所有线程完成
     for thread in threads:
+        task_queue.put(("task_done_a0", {}))
         thread.join()
 
     check_empty = 0

@@ -149,6 +149,20 @@ def get_tasks(table_name: str, task_filter: str = "") -> list:
     return partitions
 
 
+def get_columns(table_name: str):
+    columns = list()
+    conn = get_conn()
+    cmd = f"SHOW COLUMNS FROM {table_name}"
+    with conn.cursor() as cursor:
+        cursor.execute(cmd)
+        conn.commit()
+        rows = cursor.fetchall()
+        for row in rows:
+            columns.append(row['Field'])
+    print(columns)
+    return columns
+
+
 def clear_sqs(job: str = ""):
     aws_region = os.getenv("AWS_REGION")
 
