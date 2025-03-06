@@ -48,10 +48,10 @@ def get_data_source(cluster_type="source"):
     # .config("fs.s3a.fast.upload", "true") \
 
 
-def get_spark(job_name: str, table_name: str, index):
+def get_spark(job_name: str, index):
     dependency_jars = os.getenv("DEPENDENCY_JARS")
     spark_cache = os.getenv("SPARK_CACHE")
-    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{table_name}{index}") \
+    spark = SparkSession.builder.appName(f"StarRocksMigration{job_name}{index}") \
         .config("spark.jars", dependency_jars) \
         .config("spark.scheduler.mode", "FIFO") \
         .config("spark.local.dir", spark_cache) \
