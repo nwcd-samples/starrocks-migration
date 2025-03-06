@@ -180,8 +180,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         return ""
 
 
-def runone(job_name: str, table_name: str, logger):
-    spark = get_spark(job_name, table_name, index=0)
+def runone(spark, job_name: str, table_name: str, logger):
     filter_str = ""
     data_filter = find_data_filter_by_table(table_name)
     if data_filter:
