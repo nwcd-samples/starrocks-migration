@@ -33,7 +33,7 @@ class EWorkerThread(threading.Thread):
         while True:
             try:
                 # 从队列中获取数据
-                table_name, partition = self.deque_queue.popleft()
+                table_name, partition = self.deque_queue.get()
                 if partition:
                     msg = sparkrun(spark, self.job_name, table_name, partition, logger)
                 else:
