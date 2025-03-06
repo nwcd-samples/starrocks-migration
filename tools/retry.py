@@ -111,7 +111,7 @@ class RetryFactory:
         filter = "IMPORTED SUCESSFULLY"
         pass
 
-    def _get_records(prefix: str, filter_str: str) -> list:
+    def _get_records(self, prefix: str, filter_str: str) -> list:
         aws_region = os.getenv("AWS_REGION")
         recorder = os.getenv("RECORDER")
         dynamodb = boto3.resource("dynamodb", region_name=aws_region)
