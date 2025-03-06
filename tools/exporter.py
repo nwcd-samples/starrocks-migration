@@ -1,15 +1,11 @@
 import time
-from datetime import datetime
-from collections import deque
 import queue
-import json
 import os
 import boto3
 import threading
 import shutil
 from .sparkexporter import run as sparkrun, get_spark
 from .sparkexporter import runone as sparkrunone
-from .mysql import get_conn
 from .log import get_logger
 from .helper import get_tasks, send_task_done_notification, split_task_filter
 
