@@ -105,7 +105,6 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
     # 创建 SparkSession
     # 使用 StarRocks 数据源读取数据
     host, port, user, pwd, db_name = get_data_source()
-    storage = os.getenv("STORAGES")
     starrocks_table_size = int(os.getenv("STARROCKS_TABLE_SIZE", "10000"))
     max_row_count = int(os.getenv("PER_FILE_MAX_ROW_COUNT"))
 
@@ -116,13 +115,14 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         .option("starrocks.user", f"{user}") \
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.exec.mem.limit", 4294967296) \
-        .option("starrocks.batch.size", 10000)
+        .option("starrocks.batch.size", 10000) \
+        .option("starrocks.request.tablet.size", starrocks_table_size)
 
     if filter_str:
         logger.warn(f"[exporter] filter data in {table_name} {filter_str}")
         starrocks_df = starrocks_df.option("starrocks.filter.query", filter_str)
 
-    if partition :
+    if partition:
         pt_name = partition["name"]
         starrocks_df = starrocks_df.load()
         row_count = partition["rowcount"]
@@ -141,13 +141,6 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
     direct_im = os.getenv("SPARK_DIRECT") == "True"
 
     if not direct_im:
-        if storage.startswith("s3://"):
-            storage = storage.replace("s3://", "s3a://")
-
-            # s3://bucket_name/前缀路径(配置文件中配置)/job_name/db_name/table_name/partition_name/file_name.csv
-            # 例如 s3://tx-au-mock-data/sunexf/test1/sunim/data_point_val/p20231103/
-            # data_01add602-b21d-11ef-b192-0ac76da15273_0_1_0_2_0.csv
-
         local_dir = os.getenv("SPARK_TEMP")
 
         if partition:
