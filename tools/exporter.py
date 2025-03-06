@@ -192,8 +192,10 @@ def run(job_name: str):
                 task_queue.put((table_name, partition))
 
     # 等待所有线程完成
-    for thread in threads:
+    for index in range(num_threads):
         task_queue.put(("task_done_a0", {}))
+
+    for thread in threads:
         thread.join()
 
     check_empty = 0
