@@ -34,7 +34,7 @@ def get_spark(job_name: str, index: int):
     return spark
 
 
-def run(spark, job_name: str, table_name: str, file_path: str, logger):
+def run(spark, job_name: str, table_name: str, file_path: str, columns: list, logger):
     host, port, user, pwd, db_name = get_data_source()
     if file_path.startswith("s3://"):
         file_path = file_path.replace("s3://", "s3a://")
@@ -55,6 +55,7 @@ def run(spark, job_name: str, table_name: str, file_path: str, logger):
             .option("starrocks.fe.jdbc.url", f"jdbc:mysql://{host}:{port}") \
             .option("starrocks.user", f"{user}") \
             .option("starrocks.password", f"{pwd}") \
+            .option("starrocks.columns", ",".join(columns)) \
             .mode("append") \
             .save()
         logger.info(f"[importer][{job_name}]===>Succeed in importing {table_name} from {file_path}")

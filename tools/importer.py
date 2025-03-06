@@ -11,6 +11,7 @@ import uuid
 from .mysql import get_conn
 from .log import get_logger
 from .sparkimporter import get_spark, run as sparkrun
+from .helper import get_columns
 
 logger = get_logger("importer")
 
@@ -57,6 +58,7 @@ class IWorkerThread(threading.Thread):
         threading.Thread.__init__(self)
         self.job_name = job_name
         self.index = index
+        self.table_cache = dict()
 
     def run(self):
 
@@ -148,10 +150,17 @@ class IWorkerThread(threading.Thread):
                     table_name = parts[6]
                     file_path = utask_name.replace("s3://", "s3a://")
 
-                    if using_spark:
-                        is_ok, msg = sparkrun(spark, self.job_name, table_name, file_path, logger)
+                    if table_name in self.table_cache:
+                        columns = self.table_cache[table_name]
                     else:
-                        is_ok, msg = import_task(self.job_name, db_name, table_name, file_path, aws_region, ak, sk)
+                        columns = get_columns(table_name)
+                        self.table_cache[table_name] = columns
+
+                    if using_spark:
+                        is_ok, msg = sparkrun(spark, self.job_name, table_name, file_path, columns, logger)
+                    else:
+                        is_ok, msg = import_task(self.job_name, db_name, table_name, file_path, columns, aws_region, ak,
+                                                 sk)
                     status = FILE_STATUS_IMPORTED_SUCCESS if is_ok else FILE_STATUS_IMPORTED_FAILED
                     dynamodb.update_item(
                         TableName=recorder,
@@ -179,21 +188,21 @@ class IWorkerThread(threading.Thread):
                 time.sleep(10)
 
 
-def import_task(job_name, db_name, table_name, file_path: str, aws_region: str, ak="", sk=""):
+def import_task(job_name, db_name, table_name, file_path: str, columns: list, aws_region: str, ak="", sk=""):
     # 生成一个UUID（版本4）
     now = datetime.now()
     current_time = now.strftime("%Y_%m_%d_%H_%M_%S")
     uuid_v4 = uuid.uuid4()
     ukey = str(uuid_v4)[-4:-1]
     label = f"{table_name}_{current_time}_{ukey}"
-
+    columns_str = ",".join(columns)
     if ak == "" and sk == "":
         command = f"""
                 LOAD LABEL {db_name}.{label}
                 (
                     DATA INFILE("{file_path}")
                     INTO TABLE {table_name}
-                    (id, ps_id, date_id, uuid, ps_key, p82202, p82019, p82020, p82015, p82030, p82031, p82024, p82025, p82026, p82027, p82028, p82029, p82023, p82417, p82033, p82036, p82037, p82032)
+                    ({columns_str})
                 )
                 WITH BROKER
                 (
@@ -210,7 +219,7 @@ def import_task(job_name, db_name, table_name, file_path: str, aws_region: str, 
                 (
                     DATA INFILE("{file_path}")
                     INTO TABLE {table_name}
-                    (id, ps_id, date_id, uuid, ps_key, p82202, p82019, p82020, p82015, p82030, p82031, p82024, p82025, p82026, p82027, p82028, p82029, p82023, p82417, p82033, p82036, p82037, p82032)
+                    ({columns_str})
                 )
                 WITH BROKER
                 (

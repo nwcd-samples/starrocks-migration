@@ -7,7 +7,7 @@ import shutil
 from .sparkexporter import run as sparkrun, get_spark
 from .sparkexporter import runone as sparkrunone
 from .log import get_logger
-from .helper import get_tasks, send_task_done_notification, split_task_filter
+from .helper import get_tasks, send_task_done_notification, split_task_filter, get_columns
 
 logger = get_logger("exporter")
 
@@ -30,6 +30,7 @@ class EWorkerThread(threading.Thread):
             try:
                 # 从队列中获取数据
                 table_name, partition = self.deque_queue.get()
+
                 if table_name == "task_done_a0" and not partition:
                     logger.info(
                         f"[exporter][{self.job_name}]===>Thread {self.index}: No more data to process. Exiting.")

@@ -159,6 +159,7 @@ def get_columns(table_name: str):
         rows = cursor.fetchall()
         for row in rows:
             columns.append(row['Field'])
+    conn.close()
     print(columns)
     return columns
 
