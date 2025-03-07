@@ -301,9 +301,8 @@ def db(job_name: str, filter_str="", delete=False):
         else:
             total_count = 0
             for item in results:
-                total_count += item['Count']
                 print(item)
-            print(f"总计 {total_count} 条")
+            print(f"总计 {len(results)} 条")
     except NoCredentialsError:
         print("未找到 AWS 凭证。请配置 AWS 凭证。")
     except PartialCredentialsError:
