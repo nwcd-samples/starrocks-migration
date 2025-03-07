@@ -27,6 +27,31 @@ def send_task_done_notification(job_name: str, count=1):
         )
 
 
+def _get_records(prefix: str, filter_str: str) -> list:
+    aws_region = os.getenv("AWS_REGION")
+    recorder = os.getenv("RECORDER")
+    dynamodb = boto3.resource("dynamodb", region_name=aws_region)
+    table = dynamodb.Table(recorder)
+    all_items = []
+
+    scan_kwargs = {
+        "FilterExpression": Attr("task_name").begins_with(prefix)
+    }
+
+    if filter_str:
+        scan_kwargs["FilterExpression"] &= Attr("status").ne(filter_str)
+
+    while True:
+        response = table.scan(**scan_kwargs)
+        all_items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        scan_kwargs["ExclusiveStartKey"] = last_key
+
+    return [item["task_name"] for item in all_items]
+
+
 def pick_range_key(partition_range_str):
     # 首先，根据"keys: ["分割字符串，然后取第二部分
     parts = partition_range_str.split("keys: [")
@@ -222,7 +247,7 @@ def scan_table(table, segment, total_segments, key_prefix, filter_str=""):
     return response
 
 
-def db(job_name: str, delete=False):
+def db(job_name: str, filter_str="", delete=False):
     table_name = os.getenv("RECORDER")
     # 创建 DynamoDB 客户端
     aws_region = os.getenv("AWS_REGION")
@@ -244,15 +269,11 @@ def db(job_name: str, delete=False):
         key_prefix_str = f"{storage}/{job_name}"
     total_segments = 10
     try:
-
-        # 并行执行扫描
-        results = []
-        for segment in range(0, total_segments):
-            results.append(scan_table(table, segment, total_segments, key_prefix_str))
+        results = _get_records(key_prefix_str, filter_str)
 
         # 合并结果
         if delete:
-            all_items = [item["task_name"] for result in results for item in result.get('Items', [])]
+            all_items = [item["task_name"] for item in results]
 
             # 构造批量删除请求
             delete_requests = []

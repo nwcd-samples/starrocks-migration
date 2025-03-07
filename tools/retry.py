@@ -4,7 +4,7 @@ from boto3.dynamodb.conditions import Key, Attr
 import time
 from datetime import datetime
 import json
-from .helper import send_task_done_notification
+from .helper import send_task_done_notification, _get_records
 from enum import Enum
 
 FILE_STATUS_RETRY = "IMPORTED RETRY"
@@ -34,7 +34,8 @@ class RetryFactory:
                 items = self._get_job_import_tasks()
             else:
                 items = self._get_failed_import_tasks()
-
+                print(items)
+                print(len(items))
             self._retry_import_tasks(items)
             return
 
@@ -79,7 +80,7 @@ class RetryFactory:
 
         key_prefix_str = os.path.join(storage, self.job_name)
         filter_str = "IMPORTED SUCCESSFULLY"
-        return self._get_records(key_prefix_str, filter_str)
+        return _get_records(key_prefix_str, filter_str)
 
     def _get_job_import_tasks(self):
         storages = os.getenv("STORAGES").split(",")
@@ -88,7 +89,7 @@ class RetryFactory:
         key_prefix_str = os.path.join(storage, self.job_name)
 
         filter_str = ""
-        return self._get_records(key_prefix_str, filter_str)
+        return _get_records(key_prefix_str, filter_str)
 
     def _get_failed_import_partitions(self, partition_name: str):
         storages = os.getenv("STORAGES").split(",")
@@ -101,7 +102,7 @@ class RetryFactory:
         key_prefix_str = os.path.join(storage, self.job_name, db_name, tb_name, partition_name)
 
         filter_str = ""
-        return self._get_records(key_prefix_str, filter_str)
+        return _get_records(key_prefix_str, filter_str)
 
     def _get_failed_export_tasks(self):
         STORAGES = os.getenv("STORAGES").split(",")
@@ -111,26 +112,4 @@ class RetryFactory:
         filter = "IMPORTED SUCESSFULLY"
         pass
 
-    def _get_records(self, prefix: str, filter_str: str) -> list:
-        aws_region = os.getenv("AWS_REGION")
-        recorder = os.getenv("RECORDER")
-        dynamodb = boto3.resource("dynamodb", region_name=aws_region)
-        table = dynamodb.Table(recorder)
-        all_items = []
 
-        scan_kwargs = {
-            "FilterExpression": Attr("task_name").begins_with(prefix)
-        }
-
-        if filter_str:
-            scan_kwargs["FilterExpression"] &= Attr("status").ne(filter_str)
-
-        while True:
-            response = table.scan(**scan_kwargs)
-            all_items.extend(response.get("Items", []))
-            last_key = response.get("LastEvaluatedKey")
-            if not last_key:
-                break
-            scan_kwargs["ExclusiveStartKey"] = last_key
-
-        return [item["task_name"] for item in all_items]

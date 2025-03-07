@@ -38,14 +38,16 @@ def main():
     parser_va = subparsers.add_parser("validation", help="验证")
     parser_va.add_argument("--env", type=str, help="配置文件地址", default=".env")
 
-    parser_sqs = subparsers.add_parser("clear", help="情况SQS")
+    parser_sqs = subparsers.add_parser("sqs", help="分析SQS")
     parser_sqs.add_argument("--env", type=str, help="配置文件地址", default=".env")
     parser_sqs.add_argument("--job", type=str, help="启动作业名称")
 
-    parser_db = subparsers.add_parser("db", help="清理记录状态的DB")
+    parser_db = subparsers.add_parser("db", help="分析记录状态的DB")
     parser_db.add_argument("--env", type=str, help="配置文件地址", default=".env")
     parser_db.add_argument("--job", type=str, help="启动作业名称")
-    parser_db.add_argument("--type", type=str, help="查询db状态或者删除job 的状态记录: [scan clear] , 默认 scan", default="scan")
+    parser_db.add_argument("--status", type=str, help="状态过滤", default="")
+    parser_db.add_argument("--type", type=str, help="查询db状态或者删除job 的状态记录: [scan clear] , 默认 scan",
+                           default="scan")
 
     args = parser.parse_args()
     if args.command == "export":
@@ -83,7 +85,7 @@ def main():
         env_path = args.env
         conf.load_env(env_path)
         validation.run()
-    elif args.command == "clear":
+    elif args.command == "sqs":
         env_path = args.env
         conf.load_env(env_path)
         job_name = args.job
@@ -93,9 +95,9 @@ def main():
         conf.load_env(env_path)
         job_name = args.job
         if args.type == "clear":
-            db(job_name, delete=True)
+            db(job_name, args.status, delete=True)
         else:
-            db(job_name)
+            db(job_name, args.status)
     else:
         parser.print_help()
 

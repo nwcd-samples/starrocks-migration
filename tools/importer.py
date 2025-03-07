@@ -193,8 +193,8 @@ def import_task(job_name, db_name, table_name, file_path: str, columns: list, aw
     now = datetime.now()
     current_time = now.strftime("%Y_%m_%d_%H_%M_%S")
     uuid_v4 = uuid.uuid4()
-    ukey = str(uuid_v4)[-4:-1]
-    label = f"{table_name}_{current_time}_{ukey}"
+    u_key = str(uuid_v4).replace("-", "_")
+    label = f"{table_name}_{current_time}_{u_key}"
     columns_str = ",".join(columns)
     if ak == "" and sk == "":
         command = f"""
