@@ -115,7 +115,7 @@ def runp(spark: SparkSession, job_name: str, table_name: str, filter_str: str, p
         .option("starrocks.user", f"{user}") \
         .option("starrocks.password", f"{pwd}") \
         .option("starrocks.exec.mem.limit", 4294967296) \
-        .option("starrocks.batch.size", 1000000) \
+        .option("starrocks.batch.size", 50000) \
         .option("starrocks.request.tablet.size", starrocks_table_size)
 
     if filter_str:
